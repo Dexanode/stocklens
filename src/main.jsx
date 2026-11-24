@@ -1,7 +1,23 @@
 import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
+import "@rainbow-me/rainbowkit/styles.css";
+import { ConnectButton, getDefaultConfig } from "@rainbow-me/rainbowkit";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useAccount, WagmiProvider } from "wagmi";
+import { baseSepolia } from "wagmi/chains";
 import "./index.css";
+
+const wagmiConfig = getDefaultConfig({
+  appName: "StockLens",
+  appDescription: "Onchain research terminal for tokenized stock experiments.",
+  appUrl: "https://stocklens-black-six.vercel.app",
+  appIcon: "https://stocklens-black-six.vercel.app/favicon.svg",
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID",
+  chains: [baseSepolia],
+  ssr: false,
+});
+const queryClient = new QueryClient();
 
 const assets = {
   AAPLx: {
@@ -212,6 +228,33 @@ function StockLensLogo({ compact = false }) {
   );
 }
 
+function WalletConnectButton({ className = "wallet-button" }) {
+  return (
+    <ConnectButton.Custom>
+      {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
+        const ready = mounted;
+        const connected = ready && account && chain;
+        if (!ready) return <button className={className} aria-hidden="true" />;
+        if (!connected) {
+          return (
+            <button className={className} onClick={openConnectModal}>
+              Connect wallet <b>↗</b>
+            </button>
+          );
+        }
+        return (
+          <button
+            className={className}
+            onClick={chain.unsupported ? openChainModal : openAccountModal}
+          >
+            {chain.unsupported ? "Wrong network" : account.displayName} <b>↗</b>
+          </button>
+        );
+      }}
+    </ConnectButton.Custom>
+  );
+}
+
 function App() {
   const [selected, setSelected] = useState("AAPLx");
   const [range, setRange] = useState("1M");
@@ -233,6 +276,7 @@ function App() {
   const [thesisHistory, setThesisHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const { address } = useAccount();
   const asset = marketAssets[selected];
   const chartPoints = useMemo(
     () => chartPointsForRange(asset.points, range),
@@ -260,6 +304,13 @@ function App() {
       100,
     [asset, budget],
   );
+
+  useEffect(() => {
+    setWallet(address || "");
+    if (address) {
+      setNotice("Wallet connected on Base Sepolia. Ready for an onchain proof.");
+    }
+  }, [address]);
 
   useEffect(() => {
     fetch("/api/market")
@@ -525,14 +576,7 @@ function App() {
             <span className="status">
               <i /> {wallet ? "Wallet ready" : dataMode}
             </span>
-            <button className="wallet-button" onClick={connectWallet}>
-              {wallet
-                ? wallet === "preview"
-                  ? "Preview wallet"
-                  : `${wallet.slice(0, 6)}…${wallet.slice(-4)}`
-                : "Connect wallet"}{" "}
-              <b>↗</b>
-            </button>
+            <WalletConnectButton />
           </div>
         </header>
         <main>
@@ -906,9 +950,7 @@ function App() {
               <button className="run-button" onClick={runSimulation}>
                 {isSimulating ? "CALCULATING…" : "RUN PAPER TRADE"} <b>↗</b>
               </button>
-              <button className="wallet-inline" onClick={connectWallet}>
-                {wallet ? "WALLET CONNECTED" : "CONNECT BASE WALLET"} <b>↗</b>
-              </button>
+              <WalletConnectButton className="wallet-inline" />
               <button className="chain-button" onClick={proveOnchain}>
                 {isSending ? "WAITING FOR WALLET…" : "RECORD THESIS ONCHAIN"}{" "}
                 <b>↗</b>
@@ -1022,6 +1064,10 @@ function App() {
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <App />
+    <WagmiProvider config={wagmiConfig}>
+      <QueryClientProvider client={queryClient}>
+        <App />
+      </QueryClientProvider>
+    </WagmiProvider>
   </StrictMode>,
 );
