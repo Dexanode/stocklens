@@ -81,6 +81,7 @@ function App() {
   const [isSending, setIsSending] = useState(false)
   const [marketAssets, setMarketAssets] = useState(assets)
   const [riskBriefs, setRiskBriefs] = useState(briefs)
+  const [riskInsights, setRiskInsights] = useState({})
   const [dataMode, setDataMode] = useState('DEMO DATA')
   const [riskLoading, setRiskLoading] = useState(false)
   const [thesisHistory, setThesisHistory] = useState([])
@@ -89,6 +90,7 @@ function App() {
   const asset = marketAssets[selected]
   const chartPoints = useMemo(() => chartPointsForRange(asset.points, range), [asset.points, range])
   const chartCandles = useMemo(() => candlesForRange(asset.candles, range), [asset.candles, range])
+  const insight = riskInsights[selected] || { confidence: 68, bull: asset.bull, bear: asset.bear, catalysts: ['Momentum is the primary signal.', 'Liquidity supports a measured paper position.'], risks: [asset.bear, 'Model output can lag sudden market changes.'], portfolioRationale: 'Keep the position sized to the quality of the signal and review it against the rest of the portfolio.' }
   const allocation = useMemo(() => Math.round((budget / Number(asset.price.replace(/[$,]/g, ''))) * 100) / 100, [asset, budget])
 
   useEffect(() => {
@@ -100,7 +102,11 @@ function App() {
   useEffect(() => {
     setRiskLoading(true)
     fetch('/api/risk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ asset }) }).then((result) => result.ok ? result.json() : Promise.reject(new Error('risk_unavailable'))).then((result) => {
-      if (result.summary) setRiskBriefs((current) => ({ ...current, [selected]: result.summary }))
+      if (result.summary) {
+        const enrichedSummary = [result.summary, result.catalysts?.length ? `Catalysts: ${result.catalysts.join(' · ')}` : '', result.risks?.length ? `Risks: ${result.risks.join(' · ')}` : ''].filter(Boolean).join(' ')
+        setRiskBriefs((current) => ({ ...current, [selected]: enrichedSummary }))
+        setRiskInsights((current) => ({ ...current, [selected]: result }))
+      }
     }).catch(() => {}).finally(() => setRiskLoading(false))
   }, [selected, asset])
 
@@ -160,7 +166,7 @@ function App() {
   function runSimulation() {
     setIsSimulating(true)
     setPortfolio((items) => [{ symbol: selected, units: allocation, notional: Number(budget) }, ...items.filter((item) => item.symbol !== selected)])
-    setNotice(`${selected} paper position added to your local portfolio.`)
+    setNotice(`${selected} paper position added. ${insight.portfolioRationale}`)
     window.setTimeout(() => setIsSimulating(false), 850)
   }
 
