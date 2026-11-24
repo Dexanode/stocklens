@@ -2,7 +2,11 @@ import { StrictMode, useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserProvider, Contract, JsonRpcProvider } from "ethers";
 import "@rainbow-me/rainbowkit/styles.css";
-import { ConnectButton, getDefaultConfig } from "@rainbow-me/rainbowkit";
+import {
+  ConnectButton,
+  getDefaultConfig,
+  RainbowKitProvider,
+} from "@rainbow-me/rainbowkit";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAccount, WagmiProvider } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
@@ -1066,7 +1070,9 @@ createRoot(document.getElementById("root")).render(
   <StrictMode>
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={queryClient}>
-        <App />
+        <RainbowKitProvider>
+          <App />
+        </RainbowKitProvider>
       </QueryClientProvider>
     </WagmiProvider>
   </StrictMode>,
