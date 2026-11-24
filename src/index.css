@@ -1,3 +1,45 @@
+CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS=1
+CODEX_CI=1
+CODEX_SESSION_ID=01a20de0-53e8-7570-a7f4-25f83c37807c
+CODEX_THREAD_ID=01a20de0-53e8-7570-a7f4-25f83c37807c
+CODEX_TOOL_CALL_ID=exec-f4d3140c-39a9-4bd2-bf9a-db3d5e0312de
+CODEX_VERSION=0.172.0
+COLORTERM=''
+COMMAND_MODE=unix2003
+FPATH=/opt/homebrew/share/zsh/site-functions:/usr/local/share/zsh/site-functions:/usr/share/zsh/site-functions:/usr/share/zsh/5.9/functions
+FREETYPE_PROPERTIES='truetype:interpreter-version=35'
+GH_CONFIG_DIR='/Users/dexa/Library/Application Support/OpenBot/provider-state/github/gh'
+GH_PAGER=cat
+GIT_CONFIG_PARAMETERS=\''credential.https://github.com.helper='\'' '\''credential.https://github.com.helper=!f() { test "$1" = get || exit 0; p=; s=; h=; u=; while IFS='\''\'\'\''='\''\'\'\'' read -r k v; do case $k in (path) p=$v;; (protocol) s=$v;; (host) h=$v;; (username) u=$v;; esac; done; t=; test -n "$p" && t=$(awk -F '\''\'\'\''\t'\''\'\'\'' -v r="$p" '\''\'\'\''BEGIN { sub(/\/+$/, "", r); sub(/\.git$/, "", r) } tolower($1) == tolower(r) { print $2; exit }'\''\'\'\'' '\''\'\'\''/Users/dexa/Library/Application Support/OpenBot/provider-state/github/repositories'\''\'\'\'' 2>/dev/null); test -n "$t" || { o=$({ printf '\''\'\'\''protocol=%s\nhost=%s\n'\''\'\'\'' "$s" "$h"; test -z "$p" || printf '\''\'\'\''path=%s\n'\''\'\'\'' "$p"; test -z "$u" || printf '\''\'\'\''username=%s\n'\''\'\'\'' "$u"; echo; } | (unset GH_CONFIG_DIR; m=$(printf '\''\'\'\''\047%s\047'\''\'\'\'' credential.https://github.com.useHttpPath=true); case $GIT_CONFIG_PARAMETERS in (*"$m"*) a=${GIT_CONFIG_PARAMETERS##*"$m"};; (*) a=;; esac; a='\''\'\'\'\''\'\'\''$a; GIT_CONFIG_PARAMETERS=${a# }; export GIT_CONFIG_PARAMETERS; GIT_ASKPASS= SSH_ASKPASS= GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never exec git credential fill) 2>/dev/null) || o=; c=$(printf '\''\'\'\''%s\n'\''\'\'\'' "$o" | while IFS= read -r l; do case $l in (username=?*|password=?*) printf '\''\'\'\''%s\n'\''\'\'\'' "$l";; esac; done); case $c in (*password=*) printf '\''\'\'\''%s\n'\''\'\'\'' "$c"; exit 0;; esac; }; echo username=x-access-token; printf '\''\'\'\''password='\''\'\'\''; if test -n "$t"; then printf '\''\'\'\''%s'\''\'\'\'' "$t"; else cat '\''\'\'\''/Users/dexa/Library/Application Support/OpenBot/provider-state/github/token'\''\'\'\''; fi; echo; }; f'\'' '\''credential.https://github.com.useHttpPath=true'\'
+GIT_PAGER=cat
+HOME=/Users/dexa
+HOMEBREW_CELLAR=/opt/homebrew/Cellar
+HOMEBREW_PREFIX=/opt/homebrew
+HOMEBREW_REPOSITORY=/opt/homebrew
+INFOPATH=/opt/homebrew/share/info:
+LANG=C.UTF-8
+LC_ALL=C.UTF-8
+LC_CTYPE=C.UTF-8
+LOGNAME=dexa
+MallocNanoZone=0
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S=461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f
+NO_COLOR=1
+NoDefaultCurrentDirectoryInExePath=1
+OLDPWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+OPENBOT_AGENT_PROCESS=1
+PAGER=cat
+PATH=$'/Applications/Wine \nStaging.app/Contents/Resources/wine/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Users/dexa/Library/Application Support/OpenBot/provider-runtimes/codex/darwin-arm64/0.172.0/codex-path:/Users/dexa/.codex/tmp/arg0-macos/codex-arg0hb35lx:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/dexa/.cargo/bin:/Users/dexa/Library/Python/3.9/bin:/Users/dexa/.foundry/bin:/Users/dexa/tizen-studio/tools/ide/bin:/Users/dexa/tizen-studio/tools'
+PWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+SHELL=/bin/zsh
+SHLVL=1
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.eyWKpcl8Fd/Listeners
+TERM=dumb
+TMPDIR=/var/folders/93/yn8h0ylj4tn60nmq57hqmvrm0000gn/T/
+USER=dexa
+XPC_FLAGS=0x0
+XPC_SERVICE_NAME=application.app.openbot.desktop.163834571.163834577
+__CFBundleIdentifier=app.openbot.desktop
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Instrument+Sans:wght@400;500;600;700&display=swap');
 @import "tailwindcss";
 .case-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:19px 0;border-bottom:1px solid #e0e5ed}.case-grid div{display:flex;flex-direction:column;gap:7px}.case-grid span,.portfolio-mini>span{color:#8d98aa;font:9px 'DM Mono',monospace}.case-grid b{color:#253451;font-size:12px;font-weight:500;line-height:1.4}.portfolio-mini{max-width:325px;margin-top:35px;padding-top:15px;border-top:1px solid #ccd5e3}.portfolio-mini>div{display:grid;grid-template-columns:60px 1fr auto;gap:8px;align-items:center;padding:12px 0;border-bottom:1px solid #e0e5ed}.portfolio-mini b{color:#17264a;font-size:12px}.portfolio-mini small,.portfolio-mini strong{font:9px 'DM Mono',monospace}.portfolio-mini small{color:#8e99aa}.portfolio-mini strong{text-align:right}.wallet-inline{width:100%;margin-top:9px;padding:12px;background:#edf1ff;color:#2457ff;font:9px 'DM Mono',monospace;text-align:left}.wallet-inline:hover{background:#dfe7ff}.wallet-inline b{float:right;font-size:13px}.trade-notice{margin:15px 0 0;padding:10px;border-left:2px solid #2457ff;background:#f3f6ff;color:#536177;font:9px 'DM Mono',monospace;line-height:1.5}
@@ -6,3 +48,6 @@
 /* StockLens cinematic identity */
 :root{font-family:'Instrument Sans',sans-serif}.brand-lockup{display:flex;align-items:center;gap:9px;color:#2457ff}.brand-logo{width:32px;height:32px}.brand-wordmark{font-size:15px;font-weight:700;letter-spacing:.13em}.brand-lockup.compact{gap:6px}.brand-lockup.compact .brand-logo{width:22px;height:22px}.brand-lockup.compact .brand-wordmark{font-size:11px;letter-spacing:.1em}.nav-emoji{display:inline-grid;width:19px;place-items:center;color:#2457ff;font-size:16px;line-height:1}.side-nav a:not(.active) .nav-emoji{color:#9aa5b9}
 .chain-button{width:100%;margin-top:9px;padding:12px;background:#17264a;color:#fff;font:9px 'DM Mono',monospace;text-align:left}.chain-button:hover{background:#0d1730}.chain-button b{float:right;font-size:13px}.tx-link{display:block;margin-top:12px;color:#2457ff;font:9px 'DM Mono',monospace;letter-spacing:.04em}
+.history-section{padding:76px 0;border-top:1px solid #d6deea}.history-heading{display:flex;justify-content:space-between;align-items:end;margin-bottom:28px}.history-heading h2{margin:14px 0 0;color:#17264a;font-size:clamp(3.8rem,6vw,6.6rem);font-weight:500;letter-spacing:-.09em;line-height:.88}.history-heading h2 em{color:#2457ff;font-family:Georgia,serif;font-weight:400}.history-heading p{max-width:360px;margin:24px 0 0;color:#758196;font-size:14px;line-height:1.6}.explorer-link{color:#2457ff;font:9px 'DM Mono',monospace;letter-spacing:.04em}.history-panel{overflow:hidden}.history-list{display:flex;flex-direction:column}.history-row{display:grid;grid-template-columns:42px 1.2fr .75fr .75fr .65fr 1.1fr auto;gap:18px;align-items:center;padding:18px 20px;border-bottom:1px solid #e0e5ed;transition:background .2s}.history-row:last-child{border-bottom:0}.history-row:hover{background:#f6f8ff}.history-row span{display:flex;flex-direction:column;gap:6px}.history-row small{color:#9aa5b9;font:8px 'DM Mono',monospace}.history-row b{color:#253451;font-size:12px;font-weight:500}.history-id{color:#2457ff!important;font:10px 'DM Mono',monospace!important}.history-symbol b{font-size:14px}.history-symbol small{font-size:8px}.verified-badge{padding:7px 9px;background:#e9f8f1;color:#178c5b!important;font:8px 'DM Mono',monospace!important;white-space:nowrap}.history-empty{margin:0;padding:32px 20px;color:#8d98aa;font:10px 'DM Mono',monospace}
+@media(max-width:1000px){.history-row{grid-template-columns:36px 1fr .75fr .75fr auto}.history-wallet{display:none!important}}
+@media(max-width:620px){.history-heading{display:block}.explorer-link{display:inline-block;margin-top:24px}.history-row{grid-template-columns:30px 1fr auto;gap:12px;padding:15px}.history-row>span:nth-child(3),.history-row>span:nth-child(4),.history-row>span:nth-child(5){display:none}.verified-badge{grid-column:2 / -1;justify-self:start}}
