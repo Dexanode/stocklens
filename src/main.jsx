@@ -1,6 +1,48 @@
+CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS=1
+CODEX_CI=1
+CODEX_SESSION_ID=01a20de0-53e8-7570-a7f4-25f83c37807c
+CODEX_THREAD_ID=01a20de0-53e8-7570-a7f4-25f83c37807c
+CODEX_TOOL_CALL_ID=exec-1a01f7a7-28e2-4e85-afef-fabd6e041443
+CODEX_VERSION=0.172.0
+COLORTERM=''
+COMMAND_MODE=unix2003
+FPATH=/opt/homebrew/share/zsh/site-functions:/usr/local/share/zsh/site-functions:/usr/share/zsh/site-functions:/usr/share/zsh/5.9/functions
+FREETYPE_PROPERTIES='truetype:interpreter-version=35'
+GH_CONFIG_DIR='/Users/dexa/Library/Application Support/OpenBot/provider-state/github/gh'
+GH_PAGER=cat
+GIT_CONFIG_PARAMETERS=\''credential.https://github.com.helper='\'' '\''credential.https://github.com.helper=!f() { test "$1" = get || exit 0; p=; s=; h=; u=; while IFS='\''\'\'\''='\''\'\'\'' read -r k v; do case $k in (path) p=$v;; (protocol) s=$v;; (host) h=$v;; (username) u=$v;; esac; done; t=; test -n "$p" && t=$(awk -F '\''\'\'\''\t'\''\'\'\'' -v r="$p" '\''\'\'\''BEGIN { sub(/\/+$/, "", r); sub(/\.git$/, "", r) } tolower($1) == tolower(r) { print $2; exit }'\''\'\'\'' '\''\'\'\''/Users/dexa/Library/Application Support/OpenBot/provider-state/github/repositories'\''\'\'\'' 2>/dev/null); test -n "$t" || { o=$({ printf '\''\'\'\''protocol=%s\nhost=%s\n'\''\'\'\'' "$s" "$h"; test -z "$p" || printf '\''\'\'\''path=%s\n'\''\'\'\'' "$p"; test -z "$u" || printf '\''\'\'\''username=%s\n'\''\'\'\'' "$u"; echo; } | (unset GH_CONFIG_DIR; m=$(printf '\''\'\'\''\047%s\047'\''\'\'\'' credential.https://github.com.useHttpPath=true); case $GIT_CONFIG_PARAMETERS in (*"$m"*) a=${GIT_CONFIG_PARAMETERS##*"$m"};; (*) a=;; esac; a='\''\'\'\'\''\'\'\''$a; GIT_CONFIG_PARAMETERS=${a# }; export GIT_CONFIG_PARAMETERS; GIT_ASKPASS= SSH_ASKPASS= GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never exec git credential fill) 2>/dev/null) || o=; c=$(printf '\''\'\'\''%s\n'\''\'\'\'' "$o" | while IFS= read -r l; do case $l in (username=?*|password=?*) printf '\''\'\'\''%s\n'\''\'\'\'' "$l";; esac; done); case $c in (*password=*) printf '\''\'\'\''%s\n'\''\'\'\'' "$c"; exit 0;; esac; }; echo username=x-access-token; printf '\''\'\'\''password='\''\'\'\''; if test -n "$t"; then printf '\''\'\'\''%s'\''\'\'\'' "$t"; else cat '\''\'\'\''/Users/dexa/Library/Application Support/OpenBot/provider-state/github/token'\''\'\'\''; fi; echo; }; f'\'' '\''credential.https://github.com.useHttpPath=true'\'
+GIT_PAGER=cat
+HOME=/Users/dexa
+HOMEBREW_CELLAR=/opt/homebrew/Cellar
+HOMEBREW_PREFIX=/opt/homebrew
+HOMEBREW_REPOSITORY=/opt/homebrew
+INFOPATH=/opt/homebrew/share/info:
+LANG=C.UTF-8
+LC_ALL=C.UTF-8
+LC_CTYPE=C.UTF-8
+LOGNAME=dexa
+MallocNanoZone=0
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S=461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f
+NO_COLOR=1
+NoDefaultCurrentDirectoryInExePath=1
+OLDPWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+OPENBOT_AGENT_PROCESS=1
+PAGER=cat
+PATH=$'/Applications/Wine \nStaging.app/Contents/Resources/wine/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Users/dexa/Library/Application Support/OpenBot/provider-runtimes/codex/darwin-arm64/0.172.0/codex-path:/Users/dexa/.codex/tmp/arg0-macos/codex-arg0hb35lx:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/dexa/.cargo/bin:/Users/dexa/Library/Python/3.9/bin:/Users/dexa/.foundry/bin:/Users/dexa/tizen-studio/tools/ide/bin:/Users/dexa/tizen-studio/tools'
+PWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+SHELL=/bin/zsh
+SHLVL=1
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.eyWKpcl8Fd/Listeners
+TERM=dumb
+TMPDIR=/var/folders/93/yn8h0ylj4tn60nmq57hqmvrm0000gn/T/
+USER=dexa
+XPC_FLAGS=0x0
+XPC_SERVICE_NAME=application.app.openbot.desktop.163834571.163834577
+__CFBundleIdentifier=app.openbot.desktop
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
 import { StrictMode, useEffect, useMemo, useState } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserProvider, Contract } from 'ethers'
+import { BrowserProvider, Contract, JsonRpcProvider } from 'ethers'
 import './index.css'
 
 const assets = {
@@ -20,7 +62,7 @@ const briefs = {
 const BASE_SEPOLIA = '0x14a34'
 const BASE_SEPOLIA_PARAMS = { chainId: BASE_SEPOLIA, chainName: 'Base Sepolia', nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 }, rpcUrls: ['https://sepolia.base.org'], blockExplorerUrls: ['https://sepolia.basescan.org'] }
 const REGISTRY_ADDRESS = '0xA54A6c46Fc5c5D0f0Fca952f3445c35ad8e6dD1C'
-const REGISTRY_ABI = ['function recordThesis(string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore) returns (uint256)', 'event ThesisRecorded(uint256 indexed thesisId,address indexed researcher,string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore)']
+const REGISTRY_ABI = ['function recordThesis(string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore) returns (uint256)', 'function thesisCount() view returns (uint256)', 'function getThesis(uint256 thesisId) view returns (address researcher,string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore,uint256 timestamp)', 'event ThesisRecorded(uint256 indexed thesisId,address indexed researcher,string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore)']
 
 function StockLensLogo({ compact = false }) {
   return <span className={`brand-lockup ${compact ? 'compact' : ''}`} aria-label="StockLens">
@@ -48,6 +90,9 @@ function App() {
   const [riskBriefs, setRiskBriefs] = useState(briefs)
   const [dataMode, setDataMode] = useState('DEMO DATA')
   const [riskLoading, setRiskLoading] = useState(false)
+  const [thesisHistory, setThesisHistory] = useState([])
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState('')
   const asset = marketAssets[selected]
   const allocation = useMemo(() => Math.round((budget / Number(asset.price.replace(/[$,]/g, ''))) * 100) / 100, [asset, budget])
 
@@ -63,6 +108,28 @@ function App() {
       if (result.summary) setRiskBriefs((current) => ({ ...current, [selected]: result.summary }))
     }).catch(() => {}).finally(() => setRiskLoading(false))
   }, [selected, asset])
+
+  useEffect(() => {
+    let active = true
+    async function loadThesisHistory() {
+      setHistoryLoading(true)
+      setHistoryError('')
+      try {
+        const provider = new JsonRpcProvider('https://sepolia.base.org')
+        const registry = new Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider)
+        const count = Number(await registry.thesisCount())
+        const start = Math.max(0, count - 8)
+        const rows = await Promise.all(Array.from({ length: count - start }, (_, index) => registry.getThesis(start + index)))
+        if (active) setThesisHistory(rows.map((row, index) => ({ id: start + index, researcher: row.researcher, symbol: row.symbol, price: Number(row.priceCents) / 100, change: Number(row.changeBps) / 100, score: Number(row.riskScore), timestamp: Number(row.timestamp) * 1000 })).reverse())
+      } catch {
+        if (active) setHistoryError('History belum bisa dimuat dari Base Sepolia.')
+      } finally {
+        if (active) setHistoryLoading(false)
+      }
+    }
+    loadThesisHistory()
+    return () => { active = false }
+  }, [txHash])
 
   async function connectWallet() {
     try {
@@ -112,6 +179,7 @@ function App() {
         <section id="watchlist" className="research-grid"><div className="watchlist-panel panel"><div className="panel-head"><div><span className="kicker"><span>02</span> WATCHLIST</span><h2>Market <em>map</em></h2></div><span className="count">4 ASSETS</span></div><div className="asset-list">{Object.entries(marketAssets).map(([symbol, item]) => <button key={symbol} className={`asset-row ${symbol === selected ? 'active' : ''}`} onClick={() => pick(symbol)}><span className={`asset-icon ${item.tone}`}>{symbol.slice(0, 1)}</span><span className="asset-name"><b>{symbol}</b><small>{item.name} / {item.sector}</small></span><span className="asset-price"><b>{item.price}</b><small className={item.change.startsWith('+') ? 'up' : 'down'}>{item.change}</small></span><span className="row-arrow">↗</span></button>)}</div><div className="panel-foot"><span>Curated universe</span><span>Updated {asset.time}</span></div></div><div className="chart-panel panel"><div className="panel-head chart-head"><div><span className="kicker"><span>SELECTED ASSET</span> / {asset.sector.toUpperCase()}</span><h2>{selected} <small>{asset.name}</small></h2></div><div className="asset-quote"><strong>{asset.price}</strong><span className={asset.change.startsWith('+') ? 'up' : 'down'}>{asset.change}</span></div></div><div className="chart-toolbar"><span>PRICE / BASE DEMO</span><div className="ranges">{['1W', '1M', '3M', '1Y'].map((item) => <button key={item} className={range === item ? 'active' : ''} onClick={() => setRange(item)}>{item}</button>)}</div></div><div className="chart"><div className="chart-y"><span>200</span><span>150</span><span>100</span><span>50</span></div><svg viewBox="0 0 728 90" preserveAspectRatio="none" role="img" aria-label={`Demo chart for ${selected}`}><defs><linearGradient id="fill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stopColor={asset.color} stopOpacity=".22" /><stop offset="1" stopColor={asset.color} stopOpacity="0" /></linearGradient></defs><polyline points={`4,90 ${asset.points} 724,90`} fill="url(#fill)" /><polyline points={asset.points} fill="none" stroke={asset.color} strokeWidth="2" vectorEffect="non-scaling-stroke" /></svg><div className="chart-x"><span>01 {range}</span><span>15 {range}</span><span>30 {range}</span></div></div><div className="chart-foot"><span><i className="legend-dot" style={{ background: asset.color }} /> Price movement</span><span>Volume {asset.volume} · {asset.time}</span></div></div></section>
         <section id="lens" className="lens-grid"><div className="thesis-copy"><div className="kicker"><span>03</span> INTELLIGENCE LAYER</div><h2>What is the<br /><em>thesis?</em></h2><p>Numbers become useful when they are placed in context. This brief compresses the signal into something you can challenge.</p><div className="method-note"><span>METHOD NOTE</span><b>Momentum + liquidity + volatility</b><small>Model output is illustrative and not financial advice.</small></div></div><div className="lens-panel panel"><div className="panel-head"><span className="kicker"><span>AI BRIEF</span> / {selected}</span><span className="model-tag">{riskLoading ? "MODEL / THINKING…" : "MODEL / V I K E Y"}</span></div><div className="score-row"><div className="score-ring" style={{ '--score': `${asset.score * 3.6}deg`, '--ring': asset.color }}><strong>{asset.score}</strong><small>/100</small></div><div><span className="muted-label">SIGNAL QUALITY</span><h3>{asset.risk} <span>risk</span></h3><p>{riskBriefs[selected]}</p></div></div><div className="case-grid"><div><span>BULL CASE</span><b>{asset.bull}</b></div><div><span>BEAR CASE</span><b>{asset.bear}</b></div></div><div className="lens-metrics"><div><span>Momentum</span><b className={asset.change.startsWith('+') ? 'up' : 'down'}>{asset.change.startsWith('+') ? 'Positive' : 'Cooling'}</b></div><div><span>Liquidity</span><b>{asset.volume}</b></div><div><span>Network</span><b>Base Sepolia</b></div></div></div></section>
         <section id="simulate" className="lab-grid"><div><div className="kicker"><span>04</span> PAPER LAB</div><h2>Test the<br /><em>conviction.</em></h2><p>Model a position without connecting a wallet or placing an order. A safe surface for exploring the thesis.</p>{portfolio.length > 0 && <div className="portfolio-mini"><span>LOCAL PAPER PORTFOLIO</span>{portfolio.map((item) => <div key={item.symbol}><b>{item.symbol}</b><small>{item.units} units · ${item.notional.toLocaleString()} notional</small><strong className="up">+{marketAssets[item.symbol].change}</strong></div>)}</div>}</div><div className="simulator panel"><div className="lab-title"><span>POSITION BUILDER</span><b>{wallet ? 'BASE SEPOLIA / READY' : 'NO WALLET REQUIRED'}</b></div><div className="selected-token"><span className={`asset-icon ${asset.tone}`}>{selected.slice(0, 1)}</span><div><b>{selected}</b><small>{asset.name} / {asset.price}</small></div><span className="token-network">BASE</span></div><label>PAPER BUDGET <output>${Number(budget).toLocaleString()}</output><input type="range" min="100" max="10000" step="100" value={budget} onChange={(e) => setBudget(e.target.value)} /></label><div className="sim-result"><div><span>EST. UNITS</span><strong>{allocation}</strong></div><div><span>NOTIONAL</span><strong>${Number(budget).toLocaleString()}</strong></div></div><button className="run-button" onClick={runSimulation}>{isSimulating ? 'CALCULATING…' : 'RUN PAPER TRADE'} <b>↗</b></button><button className="wallet-inline" onClick={connectWallet}>{wallet ? 'WALLET CONNECTED' : 'CONNECT BASE WALLET'} <b>↗</b></button><button className="chain-button" onClick={proveOnchain}>{isSending ? 'WAITING FOR WALLET…' : 'RECORD THESIS ONCHAIN'} <b>↗</b></button>{txHash && <a className="tx-link" href={`https://sepolia.basescan.org/tx/${txHash}`} target="_blank" rel="noreferrer">VIEW CONTRACT TX / {txHash.slice(0, 10)}…{txHash.slice(-8)}</a>}{notice && <p className="trade-notice">{notice}</p>}<p className="sim-note">Records the thesis in StockLensRegistry on Base Sepolia. Requires testnet gas.</p></div></section>
+        <section id="history" className="history-section"><div className="history-heading"><div><div className="kicker"><span>05</span> ONCHAIN RECORD</div><h2>Thesis <em>history.</em></h2><p>Research proofs read directly from StockLensRegistry on Base Sepolia.</p></div><a className="explorer-link" href={`https://sepolia.basescan.org/address/${REGISTRY_ADDRESS}#readContract`} target="_blank" rel="noreferrer">OPEN CONTRACT ↗</a></div><div className="history-panel panel">{historyLoading ? <p className="history-empty">READING BASE SEPOLIA…</p> : historyError ? <p className="history-empty">{historyError}</p> : thesisHistory.length === 0 ? <p className="history-empty">No thesis recorded yet.</p> : <div className="history-list">{thesisHistory.map((item) => <a key={item.id} className="history-row" href={`https://sepolia.basescan.org/address/${REGISTRY_ADDRESS}#events`} target="_blank" rel="noreferrer"><span className="history-id">#{item.id}</span><span className="history-symbol"><b>{item.symbol}</b><small>{new Date(item.timestamp).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}</small></span><span><small>PRICE</small><b>${item.price.toFixed(2)}</b></span><span><small>CHANGE</small><b className={item.change >= 0 ? 'up' : 'down'}>{item.change >= 0 ? '+' : ''}{item.change.toFixed(2)}%</b></span><span><small>RISK</small><b>{item.score}/100</b></span><span className="history-wallet"><small>RESEARCHER</small><b>{item.researcher.slice(0, 6)}…{item.researcher.slice(-4)}</b></span><span className="verified-badge">✓ VERIFIED ONCHAIN</span></a>)}</div>}</div></section>
       </main><footer><span>STOCKLENS / ONCHAIN RESEARCH TERMINAL</span><span>BASE BUILD SPRINT / V0.2</span></footer></div>
   </div>
 }
