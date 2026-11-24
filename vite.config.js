@@ -1,0 +1,52 @@
+CODEX_APPLY_PATCH_PRESERVE_LINE_ENDINGS=1
+CODEX_CI=1
+CODEX_SESSION_ID=01a20cc7-ba67-74b0-aae8-d6c4127d030e
+CODEX_THREAD_ID=01a20cc7-ba67-74b0-aae8-d6c4127d030e
+CODEX_TOOL_CALL_ID=exec-247587ba-dda7-4f7b-8fa7-b81095fd05f8
+CODEX_VERSION=0.172.0
+COLORTERM=''
+COMMAND_MODE=unix2003
+FPATH=/opt/homebrew/share/zsh/site-functions:/usr/local/share/zsh/site-functions:/usr/share/zsh/site-functions:/usr/share/zsh/5.9/functions
+FREETYPE_PROPERTIES='truetype:interpreter-version=35'
+GH_CONFIG_DIR='/Users/dexa/Library/Application Support/OpenBot/provider-state/github/gh'
+GH_PAGER=cat
+GIT_CONFIG_PARAMETERS=\''credential.https://github.com.helper='\'' '\''credential.https://github.com.helper=!f() { test "$1" = get || exit 0; p=; s=; h=; u=; while IFS='\''\'\'\''='\''\'\'\'' read -r k v; do case $k in (path) p=$v;; (protocol) s=$v;; (host) h=$v;; (username) u=$v;; esac; done; t=; test -n "$p" && t=$(awk -F '\''\'\'\''\t'\''\'\'\'' -v r="$p" '\''\'\'\''BEGIN { sub(/\/+$/, "", r); sub(/\.git$/, "", r) } tolower($1) == tolower(r) { print $2; exit }'\''\'\'\'' '\''\'\'\''/Users/dexa/Library/Application Support/OpenBot/provider-state/github/repositories'\''\'\'\'' 2>/dev/null); test -n "$t" || { o=$({ printf '\''\'\'\''protocol=%s\nhost=%s\n'\''\'\'\'' "$s" "$h"; test -z "$p" || printf '\''\'\'\''path=%s\n'\''\'\'\'' "$p"; test -z "$u" || printf '\''\'\'\''username=%s\n'\''\'\'\'' "$u"; echo; } | (unset GH_CONFIG_DIR; m=$(printf '\''\'\'\''\047%s\047'\''\'\'\'' credential.https://github.com.useHttpPath=true); case $GIT_CONFIG_PARAMETERS in (*"$m"*) a=${GIT_CONFIG_PARAMETERS##*"$m"};; (*) a=;; esac; a='\''\'\'\'\''\'\'\''$a; GIT_CONFIG_PARAMETERS=${a# }; export GIT_CONFIG_PARAMETERS; GIT_ASKPASS= SSH_ASKPASS= GIT_TERMINAL_PROMPT=0 GCM_INTERACTIVE=never exec git credential fill) 2>/dev/null) || o=; c=$(printf '\''\'\'\''%s\n'\''\'\'\'' "$o" | while IFS= read -r l; do case $l in (username=?*|password=?*) printf '\''\'\'\''%s\n'\''\'\'\'' "$l";; esac; done); case $c in (*password=*) printf '\''\'\'\''%s\n'\''\'\'\'' "$c"; exit 0;; esac; }; echo username=x-access-token; printf '\''\'\'\''password='\''\'\'\''; if test -n "$t"; then printf '\''\'\'\''%s'\''\'\'\'' "$t"; else cat '\''\'\'\''/Users/dexa/Library/Application Support/OpenBot/provider-state/github/token'\''\'\'\''; fi; echo; }; f'\'' '\''credential.https://github.com.useHttpPath=true'\'
+GIT_PAGER=cat
+HOME=/Users/dexa
+HOMEBREW_CELLAR=/opt/homebrew/Cellar
+HOMEBREW_PREFIX=/opt/homebrew
+HOMEBREW_REPOSITORY=/opt/homebrew
+INFOPATH=/opt/homebrew/share/info:
+LANG=C.UTF-8
+LC_ALL=C.UTF-8
+LC_CTYPE=C.UTF-8
+LOGNAME=dexa
+MallocNanoZone=0
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S=461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f
+NO_COLOR=1
+NoDefaultCurrentDirectoryInExePath=1
+OLDPWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+OPENBOT_AGENT_PROCESS=1
+PAGER=cat
+PATH=$'/Applications/Wine \nStaging.app/Contents/Resources/wine/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Users/dexa/Library/Application Support/OpenBot/provider-runtimes/codex/darwin-arm64/0.172.0/codex-path:/Users/dexa/.codex/tmp/arg0-macos/codex-arg0qmsJYX:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/dexa/.cargo/bin:/Users/dexa/Library/Python/3.9/bin:/Users/dexa/.foundry/bin:/Users/dexa/tizen-studio/tools/ide/bin:/Users/dexa/tizen-studio/tools'
+PWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+SHELL=/bin/zsh
+SHLVL=1
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.eyWKpcl8Fd/Listeners
+TERM=dumb
+TMPDIR=/var/folders/93/yn8h0ylj4tn60nmq57hqmvrm0000gn/T/
+USER=dexa
+XPC_FLAGS=0x0
+XPC_SERVICE_NAME=application.app.openbot.desktop.163834571.163834577
+__CFBundleIdentifier=app.openbot.desktop
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5174,
+    strictPort: true,
+  },
+})
