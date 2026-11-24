@@ -455,7 +455,7 @@ function App() {
   function chooseBudget(percent) {
     if (!usdcBalance) return;
     setBudgetMode(`${percent}%`);
-    setBudget(Math.floor(usdcBalance * percent * 100) / 100);
+    setBudget(Math.round((usdcBalance * percent) * 100 / 100) / 100);
   }
 
   function runSimulation() {
