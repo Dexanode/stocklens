@@ -997,3 +997,31 @@ function App() {
                         <b>{item.score}/100</b>
                       </span>
                       <span className="history-wallet">
+                        <small>RESEARCHER</small>
+                        <b>
+                          {item.researcher.slice(0, 6)}…
+                          {item.researcher.slice(-4)}
+                        </b>
+                      </span>
+                      <span className="verified-badge">✓ VERIFIED ONCHAIN</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          </section>
+        </main>
+        <footer>
+          <span>STOCKLENS / ONCHAIN RESEARCH TERMINAL</span>
+          <span>BASE BUILD SPRINT / V0.2</span>
+        </footer>
+      </div>
+    </div>
+  );
+}
+
+createRoot(document.getElementById("root")).render(
+  <StrictMode>
+    <App />
+  </StrictMode>,
+);
