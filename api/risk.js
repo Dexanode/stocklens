@@ -14,7 +14,7 @@ export default async function handler(request, response) {
         max_tokens: 900,
         temperature: 0.2,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: 'Return only valid JSON with keys summary, bull, bear, risk, score, confidence. Keep each string concise. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(asset) }],
+        messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Low, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied market fields. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(asset) }],
       }),
     })
     if (!upstream.ok) return response.status(upstream.status).json({ error: `Vikey request failed (${upstream.status})` })
