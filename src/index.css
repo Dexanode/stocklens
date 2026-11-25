@@ -12,3 +12,19 @@
 .history-section{padding:76px 0;border-top:1px solid #d6deea}.history-heading{display:flex;justify-content:space-between;align-items:end;margin-bottom:28px}.history-heading h2{margin:14px 0 0;color:#17264a;font-size:clamp(3.8rem,6vw,6.6rem);font-weight:500;letter-spacing:-.09em;line-height:.88}.history-heading h2 em{color:#2457ff;font-family:Georgia,serif;font-weight:400}.history-heading p{max-width:360px;margin:24px 0 0;color:#758196;font-size:14px;line-height:1.6}.explorer-link{color:#2457ff;font:9px 'DM Mono',monospace;letter-spacing:.04em}.history-panel{overflow:hidden}.history-list{display:flex;flex-direction:column}.history-row{display:grid;grid-template-columns:42px 1.2fr .75fr .75fr .65fr 1.1fr auto;gap:18px;align-items:center;padding:18px 20px;border-bottom:1px solid #e0e5ed;transition:background .2s}.history-row:last-child{border-bottom:0}.history-row:hover{background:#f6f8ff}.history-row span{display:flex;flex-direction:column;gap:6px}.history-row small{color:#9aa5b9;font:8px 'DM Mono',monospace}.history-row b{color:#253451;font-size:12px;font-weight:500}.history-id{color:#2457ff!important;font:10px 'DM Mono',monospace!important}.history-symbol b{font-size:14px}.history-symbol small{font-size:8px}.verified-badge{padding:7px 9px;background:#e9f8f1;color:#178c5b!important;font:8px 'DM Mono',monospace!important;white-space:nowrap}.history-empty{margin:0;padding:32px 20px;color:#8d98aa;font:10px 'DM Mono',monospace}
 @media(max-width:1000px){.history-row{grid-template-columns:36px 1fr .75fr .75fr auto}.history-wallet{display:none!important}}
 @media(max-width:620px){.history-heading{display:block}.explorer-link{display:inline-block;margin-top:24px}.history-row{grid-template-columns:30px 1fr auto;gap:12px;padding:15px}.history-row>span:nth-child(3),.history-row>span:nth-child(4),.history-row>span:nth-child(5){display:none}.verified-badge{grid-column:2 / -1;justify-self:start}}
+/* Compliance gate */
+.paper-badge{padding:6px 8px;border:1px solid #d4dcf0;color:#2457ff;font:8px 'DM Mono',monospace;letter-spacing:.08em}
+.compliance-backdrop{position:fixed;z-index:20;inset:0;display:grid;place-items:center;padding:20px;background:rgba(16,26,51,.72);backdrop-filter:blur(6px)}
+.compliance-card{width:min(520px,100%);padding:32px;border:1px solid #cbd5e5;background:#fff;box-shadow:0 24px 70px rgba(10,22,54,.28)}
+.compliance-kicker{color:#2457ff;font:10px 'DM Mono',monospace;letter-spacing:.12em}
+.compliance-card h2{margin:24px 0 16px;color:#17264a;font-size:42px;letter-spacing:-.08em;line-height:.95}
+.compliance-card p{margin:0;color:#65738c;font-size:13px;line-height:1.6}
+.compliance-label{display:block;margin-top:26px;color:#8b98ae;font:9px 'DM Mono',monospace;letter-spacing:.08em}
+.compliance-card select{width:100%;margin-top:9px;padding:13px 12px;border:1px solid #ccd6e6;background:#f7f9fc;color:#17264a;font:12px 'DM Mono',monospace}
+.compliance-check{display:flex;gap:10px;align-items:flex-start;margin-top:18px;color:#536177;font-size:12px;line-height:1.45}
+.compliance-check input{width:16px;height:16px;margin:1px 0;accent-color:#2457ff}
+.compliance-error{margin-top:13px!important;color:#d94f3a!important;font:10px 'DM Mono',monospace!important}
+.compliance-submit{width:100%;margin-top:22px;padding:15px;background:#2457ff;color:#fff;font:10px 'DM Mono',monospace;text-align:left}
+.compliance-submit:hover{background:#193fc0}.compliance-submit b{float:right;font-size:14px}
+.compliance-note{display:block;margin-top:15px;color:#9aa5b9;font:9px 'DM Mono',monospace;line-height:1.5}
+@media(max-width:620px){.paper-badge{display:none}.compliance-card{padding:24px}.compliance-card h2{font-size:36px}}

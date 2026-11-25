@@ -261,6 +261,16 @@ function WalletConnectButton({ className = "wallet-button" }) {
 }
 
 function App() {
+  const [complianceAccepted, setComplianceAccepted] = useState(() => {
+    try {
+      return window.localStorage.getItem("stocklens-compliance-v1") === "accepted";
+    } catch {
+      return false;
+    }
+  });
+  const [complianceCountry, setComplianceCountry] = useState("");
+  const [complianceConfirmed, setComplianceConfirmed] = useState(false);
+  const [complianceError, setComplianceError] = useState("");
   const [selected, setSelected] = useState("AAPLc");
   const [range, setRange] = useState("1M");
   const [chartType, setChartType] = useState("line");
@@ -545,8 +555,74 @@ function App() {
     setNotice(`${symbol} selected. Review the thesis before simulating.`);
   };
 
+  function acceptCompliance(event) {
+    event.preventDefault();
+    if (!complianceCountry) {
+      setComplianceError("Pilih negara tempat kamu berada.");
+      return;
+    }
+    if (complianceCountry === "US") {
+      setComplianceError("StockLens belum tersedia untuk pengguna atau warga Amerika Serikat.");
+      return;
+    }
+    if (!complianceConfirmed) {
+      setComplianceError("Centang konfirmasi paper-only untuk masuk.");
+      return;
+    }
+    try {
+      window.localStorage.setItem("stocklens-compliance-v1", "accepted");
+    } catch {
+      // The gate still applies for this session when storage is unavailable.
+    }
+    setComplianceAccepted(true);
+  }
+
   return (
     <div className="terminal-app">
+      {!complianceAccepted && (
+        <div className="compliance-backdrop" role="dialog" aria-modal="true" aria-labelledby="compliance-title">
+          <form className="compliance-card" onSubmit={acceptCompliance}>
+            <div className="compliance-kicker">STOCKLENS / ACCESS CHECK</div>
+            <h2 id="compliance-title">Research mode only.</h2>
+            <p>
+              StockLens adalah terminal riset untuk tokenized-stock reference data di Base.
+              Semua posisi di sini bersifat simulasi dan tidak mengeksekusi order atau custody aset.
+            </p>
+            <label className="compliance-label" htmlFor="compliance-country">YOUR LOCATION</label>
+            <select
+              id="compliance-country"
+              value={complianceCountry}
+              onChange={(event) => {
+                setComplianceCountry(event.target.value);
+                setComplianceError("");
+              }}
+            >
+              <option value="">Select country / region</option>
+              <option value="ID">Indonesia</option>
+              <option value="SG">Singapore</option>
+              <option value="AU">Australia</option>
+              <option value="GB">United Kingdom</option>
+              <option value="EU">European Union</option>
+              <option value="US">United States</option>
+              <option value="OTHER">Other</option>
+            </select>
+            <label className="compliance-check">
+              <input
+                type="checkbox"
+                checked={complianceConfirmed}
+                onChange={(event) => {
+                  setComplianceConfirmed(event.target.checked);
+                  setComplianceError("");
+                }}
+              />
+              <span>I understand this is paper-only research, not financial advice, and I will not use it where restricted.</span>
+            </label>
+            {complianceError && <p className="compliance-error">{complianceError}</p>}
+            <button className="compliance-submit" type="submit">ENTER RESEARCH TERMINAL <b>↗</b></button>
+            <small className="compliance-note">Access is blocked for US users/persons. Do not connect funds or place live trades.</small>
+          </form>
+        </div>
+      )}
       <aside className="sidebar">
         <a className="brand" href="#top">
           <StockLensLogo />
@@ -592,6 +668,7 @@ function App() {
             RESEARCH / <b>MARKET OVERVIEW</b>
           </div>
           <div className="top-actions">
+            <span className="paper-badge">PAPER ONLY</span>
             <span className="status">
               <i /> {wallet ? "Wallet ready" : dataMode}
             </span>
