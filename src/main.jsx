@@ -334,10 +334,20 @@ function App() {
 
   useEffect(() => {
     setRiskLoading(true);
+    const aiAsset = {
+      symbol: selected,
+      name: asset.name,
+      sector: asset.sector,
+      price: asset.price,
+      change: asset.change,
+      risk: asset.risk,
+      score: asset.score,
+      volume: asset.volume,
+    };
     fetch("/api/risk", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ asset }),
+      body: JSON.stringify({ asset: aiAsset }),
     })
       .then((result) =>
         result.ok
