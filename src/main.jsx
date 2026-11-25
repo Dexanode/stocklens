@@ -288,6 +288,9 @@ function App() {
   const [riskInsights, setRiskInsights] = useState({});
   const [dataMode, setDataMode] = useState("DEMO DATA");
   const [riskLoading, setRiskLoading] = useState(false);
+  const [portfolioPlan, setPortfolioPlan] = useState(null);
+  const [portfolioAgentLoading, setPortfolioAgentLoading] = useState(false);
+  const [portfolioAgentError, setPortfolioAgentError] = useState("");
   const [thesisHistory, setThesisHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
@@ -548,6 +551,36 @@ function App() {
       `${selected} paper position added. ${insight.portfolioRationale}`,
     );
     window.setTimeout(() => setIsSimulating(false), 850);
+  }
+
+  async function runPortfolioAgent() {
+    setPortfolioAgentLoading(true);
+    setPortfolioAgentError("");
+    try {
+      const universe = Object.entries(marketAssets).map(([symbol, item]) => ({
+        symbol,
+        name: item.name,
+        risk: item.risk,
+        score: item.score,
+        price: item.price,
+        change: item.change,
+        volume: item.volume,
+        contractAddress: item.contractAddress,
+      }));
+      const result = await fetch("/api/portfolio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ universe, holdings: portfolio }),
+      }).then((response) =>
+        response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.error || "portfolio_agent_unavailable"))),
+      );
+      setPortfolioPlan(result);
+      setNotice("Portfolio Agent selesai. Review target allocation sebelum paper trade.");
+    } catch (error) {
+      setPortfolioAgentError(error?.message || "Portfolio Agent belum tersedia.");
+    } finally {
+      setPortfolioAgentLoading(false);
+    }
   }
 
   const pick = (symbol) => {
@@ -995,6 +1028,37 @@ function App() {
                   ))}
                 </div>
               )}
+              <div className="agent-card">
+                <div className="agent-card-head">
+                  <span>PORTFOLIO AGENT</span>
+                  <b>{portfolioPlan ? portfolioPlan.regime : "READY"}</b>
+                </div>
+                <p>
+                  Baca seluruh B20 watchlist dan paper holdings untuk menyusun target allocation serta langkah rebalance.
+                </p>
+                <button className="agent-button" onClick={runPortfolioAgent} disabled={portfolioAgentLoading}>
+                  {portfolioAgentLoading ? "AGENT THINKING…" : "RUN PORTFOLIO AGENT"} <b>↗</b>
+                </button>
+                {portfolioAgentError && <small className="agent-error">{portfolioAgentError}</small>}
+                {portfolioPlan && (
+                  <div className="agent-plan">
+                    <strong>{portfolioPlan.summary}</strong>
+                    <div className="allocation-list">
+                      {portfolioPlan.allocations.map((item) => (
+                        <div key={item.symbol}>
+                          <span><b>{item.symbol}</b><small>{item.reason}</small></span>
+                          <strong>{item.targetPercent}%</strong>
+                        </div>
+                      ))}
+                    </div>
+                    <span className="agent-label">REBALANCE ACTIONS</span>
+                    <ul>
+                      {portfolioPlan.actions.map((action) => <li key={action}>{action}</li>)}
+                    </ul>
+                    <small className="agent-note">{portfolioPlan.rebalanceNote} · {portfolioPlan.paperOnly ? "PAPER ONLY" : "REVIEW BEFORE USE"}</small>
+                  </div>
+                )}
+              </div>
             </div>
             <div className="simulator panel">
               <div className="lab-title">

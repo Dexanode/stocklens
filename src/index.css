@@ -28,3 +28,16 @@
 .compliance-submit:hover{background:#193fc0}.compliance-submit b{float:right;font-size:14px}
 .compliance-note{display:block;margin-top:15px;color:#9aa5b9;font:9px 'DM Mono',monospace;line-height:1.5}
 @media(max-width:620px){.paper-badge{display:none}.compliance-card{padding:24px}.compliance-card h2{font-size:36px}}
+.agent-card{max-width:325px;margin-top:32px;padding-top:16px;border-top:1px solid #ccd5e3}
+.agent-card-head{display:flex;justify-content:space-between;gap:12px;color:#2457ff;font:9px 'DM Mono',monospace;letter-spacing:.06em}
+.agent-card-head b{color:#8d98aa;font-weight:400}
+.agent-card>p{margin:12px 0;color:#758196;font-size:12px;line-height:1.55}
+.agent-button{width:100%;padding:12px;background:#17264a;color:#fff;font:9px 'DM Mono',monospace;text-align:left}
+.agent-button:hover{background:#0d1730}.agent-button:disabled{cursor:wait;opacity:.65}.agent-button b{float:right;font-size:13px}
+.agent-error{display:block;margin-top:10px;color:#d94f3a;font:9px 'DM Mono',monospace;line-height:1.5}
+.agent-plan{margin-top:15px;padding:13px;background:#f3f6ff;border-left:2px solid #2457ff;color:#536177}
+.agent-plan>strong{display:block;color:#253451;font-size:12px;font-weight:500;line-height:1.45}
+.allocation-list{margin:14px 0;border-top:1px solid #d8e0ef}
+.allocation-list>div{display:flex;justify-content:space-between;gap:8px;padding:9px 0;border-bottom:1px solid #d8e0ef}
+.allocation-list span{display:flex;min-width:0;flex-direction:column;gap:3px}.allocation-list b{color:#17264a;font:10px 'DM Mono',monospace}.allocation-list small{overflow:hidden;color:#8290a5;font-size:9px;line-height:1.3;text-overflow:ellipsis}.allocation-list>div>strong{color:#2457ff;font:14px 'DM Mono',monospace}
+.agent-label{display:block;margin-top:12px;color:#2457ff;font:8px 'DM Mono',monospace;letter-spacing:.06em}.agent-plan ul{margin:7px 0;padding-left:16px}.agent-plan li{margin:5px 0;color:#64738c;font-size:10px;line-height:1.4}.agent-note{display:block;color:#9aa5b9;font:8px 'DM Mono',monospace;line-height:1.5}
