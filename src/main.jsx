@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAccount, WagmiProvider } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
 import "./index.css";
+import "./b20.css";
 
 const wagmiConfig = getDefaultConfig({
   appName: "StockLens",
@@ -24,9 +25,9 @@ const wagmiConfig = getDefaultConfig({
 const queryClient = new QueryClient();
 
 const assets = {
-  AAPLx: {
+  AAPLc: {
     name: "Apple",
-    sector: "Consumer tech",
+    sector: "Tokenized equity / B20",
     price: "$184.20",
     change: "+2.84%",
     tone: "blue",
@@ -40,9 +41,9 @@ const assets = {
     points:
       "4,55 52,42 100,49 148,28 196,39 244,25 292,34 340,18 388,30 436,22 484,35 532,13 580,22 628,8 676,17 724,4",
   },
-  COINx: {
-    name: "Coinbase",
-    sector: "Crypto exchange",
+  METAc: {
+    name: "Meta",
+    sector: "Tokenized equity / B20",
     price: "$212.64",
     change: "+5.12%",
     tone: "cyan",
@@ -56,9 +57,9 @@ const assets = {
     points:
       "4,64 52,51 100,56 148,38 196,49 244,28 292,39 340,22 388,42 436,29 484,33 532,18 580,26 628,12 676,27 724,8",
   },
-  TSLAx: {
+  TSLAc: {
     name: "Tesla",
-    sector: "Mobility",
+    sector: "Tokenized equity / B20",
     price: "$248.71",
     change: "-1.08%",
     tone: "coral",
@@ -72,9 +73,9 @@ const assets = {
     points:
       "4,22 52,30 100,18 148,43 196,28 244,52 292,40 340,62 388,48 436,54 484,44 532,68 580,56 628,72 676,62 724,78",
   },
-  NVDAx: {
+  NVDAc: {
     name: "NVIDIA",
-    sector: "Semiconductors",
+    sector: "Tokenized equity / B20",
     price: "$138.91",
     change: "+3.41%",
     tone: "violet",
@@ -91,13 +92,13 @@ const assets = {
 };
 
 const briefs = {
-  AAPLx:
+  AAPLc:
     "Momentum is positive, but the signal is concentrated in one clean trend. Watch liquidity before treating the move as conviction.",
-  COINx:
-    "Higher upside comes with higher sensitivity to crypto volume. Treat this as a volatility-led setup, not a quiet compounder.",
-  TSLAx:
+  METAc:
+    "B20 token identity is verified on Base mainnet. Treat the reference value as a market signal, not a guaranteed fill price.",
+  TSLAc:
     "The trend is choppy and the risk lens is elevated. A smaller position keeps the experiment measurable while the thesis develops.",
-  NVDAx:
+  NVDAc:
     "The strongest demo signal in this watchlist: momentum and score are aligned. Still, a strong score is not a guarantee of future returns.",
 };
 
@@ -260,7 +261,7 @@ function WalletConnectButton({ className = "wallet-button" }) {
 }
 
 function App() {
-  const [selected, setSelected] = useState("AAPLx");
+  const [selected, setSelected] = useState("AAPLc");
   const [range, setRange] = useState("1M");
   const [chartType, setChartType] = useState("line");
   const [budget, setBudget] = useState(1000);
@@ -326,7 +327,7 @@ function App() {
       .then((payload) => {
         if (Object.keys(payload.data || {}).length) {
           setMarketAssets((current) => ({ ...current, ...payload.data }));
-          setDataMode("LIVE QUOTES");
+          setDataMode("B20 MAINNET");
         }
       })
       .catch(() => setDataMode("DEMO DATA"));
@@ -492,10 +493,14 @@ function App() {
       const provider = new BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
       const registry = new Contract(REGISTRY_ADDRESS, REGISTRY_ABI, signer);
-      const priceCents = Math.round(
-        Number(asset.price.replace(/[$,]/g, "")) * 100,
-      );
-      const changeBps = Math.round(Number(asset.change.replace("%", "")) * 100);
+      const priceValue = Number(asset.price.replace(/[$,]/g, ""));
+      if (!Number.isFinite(priceValue)) {
+        setNotice("B20 NAV belum tersedia. Tunggu reference price sebelum merekam thesis.");
+        return;
+      }
+      const priceCents = Math.round(priceValue * 100);
+      const changeValue = Number.parseFloat(asset.change.replace("%", ""));
+      const changeBps = Number.isFinite(changeValue) ? Math.round(changeValue * 100) : 0;
       const transaction = await registry.recordThesis(
         selected,
         priceCents,
@@ -707,7 +712,7 @@ function App() {
                 </div>
               </div>
               <div className="chart-toolbar">
-                <span>PRICE / BASE DATA</span>
+                <span>NAV / BASE MAINNET</span>
                 <div className="chart-controls">
                   <div className="chart-modes">
                     {[
@@ -796,7 +801,7 @@ function App() {
                   />{" "}
                   {chartType === "candles"
                     ? "OHLC / live candles"
-                    : "Price movement / illustrative"}
+                    : "B20 NAV reference"}
                 </span>
                 <span>
                   Volume {asset.volume} · {asset.time}
@@ -930,6 +935,16 @@ function App() {
                   </small>
                 </div>
                 <span className="token-network">BASE</span>
+                {asset.contractAddress && (
+                  <a
+                    className="token-contract"
+                    href={`https://basescan.org/token/${asset.contractAddress}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    B20 {asset.contractAddress.slice(0, 6)}…{asset.contractAddress.slice(-4)} ↗
+                  </a>
+                )}
               </div>
               <div className="budget-header">
                 <span>PAPER BUDGET / USDC</span>
