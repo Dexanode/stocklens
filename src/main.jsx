@@ -668,15 +668,9 @@ function App() {
             Overview
           </a>
           <a href="#watchlist">
-            <span className="nav-emoji" aria-hidden="true">
-              📈
-            </span>
             Markets
           </a>
           <a href="#lens">
-            <span className="nav-emoji" aria-hidden="true">
-              🧠
-            </span>
             Risk lens
           </a>
           <a href="#simulate">Paper lab</a>
@@ -865,27 +859,13 @@ function App() {
                   role="img"
                   aria-label={`${chartType} chart for ${selected} over ${range}`}
                 >
-                  <defs>
-                    <linearGradient id="fill" x1="0" x2="0" y1="0" y2="1">
-                      <stop
-                        offset="0"
-                        stopColor={asset.color}
-                        stopOpacity=".22"
-                      />
-                      <stop
-                        offset="1"
-                        stopColor={asset.color}
-                        stopOpacity="0"
-                      />
-                    </linearGradient>
-                  </defs>
                   {chartType === "candles" && chartCandles.length ? (
                     <CandleChart candles={chartCandles} color={asset.color} />
                   ) : (
                     <>
                       <polyline
                         points={`4,90 ${chartPoints} 724,90`}
-                        fill={chartType === "area" ? "url(#fill)" : "none"}
+                        fill={chartType === "area" ? "#edf2ff" : "none"}
                       />
                       <polyline
                         points={chartPoints}

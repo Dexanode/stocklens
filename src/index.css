@@ -28,6 +28,27 @@
 .compliance-submit:hover{background:#193fc0}.compliance-submit b{float:right;font-size:14px}
 .compliance-note{display:block;margin-top:15px;color:#9aa5b9;font:9px 'DM Mono',monospace;line-height:1.5}
 @media(max-width:620px){.paper-badge{display:none}.compliance-card{padding:24px}.compliance-card h2{font-size:36px}}
+/* Dense finance terminal pass */
+:root{font-family:'Instrument Sans',sans-serif;color:#111c35;background:#f7f9fc}
+body{background:#f7f9fc}
+.terminal-app{background:#f7f9fc}
+.sidebar,.topbar,.panel,.market-state,.compliance-card{border-radius:0;box-shadow:none}
+.sidebar{background:#fff}
+.topbar{background:#fff}
+.panel{border-color:#cbd5e3}
+.side-nav{gap:0}.side-nav a{border-bottom:1px solid #edf0f5;border-radius:0}.side-nav a:hover,.side-nav a.active{background:#edf2ff}
+.asset-icon,.asset-icon.blue,.asset-icon.cyan,.asset-icon.coral,.asset-icon.violet{border-radius:0;background:#2457ff}
+.asset-row,.tape button,.ranges button,.chart-modes button,.run-button,.agent-button,.chain-button,.wallet-inline,.compliance-submit{border-radius:0}
+.asset-row.active{box-shadow:inset 3px 0 #2457ff}
+.chart{background:#fff}
+.score-ring{background:#edf2ff!important;border:10px solid var(--ring);border-radius:50%}
+.score-ring:after{inset:0;background:#fff;border-radius:50%}
+.compliance-backdrop{background:rgba(16,26,51,.65);backdrop-filter:none}
+.compliance-card{border-color:#aebbd0}
+.chart-modes button,.ranges button{border:1px solid #d7dfeb}
+.paper-badge{border-radius:0}
+.agent-card{border-radius:0}
+.nav-emoji{display:none}
 .agent-card{max-width:325px;margin-top:32px;padding-top:16px;border-top:1px solid #ccd5e3}
 .agent-card-head{display:flex;justify-content:space-between;gap:12px;color:#2457ff;font:9px 'DM Mono',monospace;letter-spacing:.06em}
 .agent-card-head b{color:#8d98aa;font-weight:400}
