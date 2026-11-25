@@ -1,0 +1,9 @@
+.token-contract {
+  color: #536177;
+  font: 8px 'DM Mono', monospace;
+  white-space: nowrap;
+}
+
+.token-contract:hover {
+  color: #2457ff;
+}
