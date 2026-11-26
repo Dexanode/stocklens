@@ -311,32 +311,8 @@ function StockLensLogo({ compact = false }) {
       className={`brand-lockup ${compact ? "compact" : ""}`}
       aria-label="StockLens"
     >
-      <svg className="brand-logo" viewBox="0 0 34 34" aria-hidden="true">
-        <circle
-          cx="17"
-          cy="17"
-          r="12"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M8 20.5c3.2-6.8 8.2-10.2 15-10.2 1.5 0 2.8.2 4 .6"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2.5"
-          strokeLinecap="round"
-        />
-        <path
-          d="M10.2 24.3c3.8 1.8 8.3 1.9 12.3.2"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          opacity=".55"
-        />
-        <circle cx="23.7" cy="10.7" r="2.2" fill="currentColor" />
-      </svg>
+      <img className="brand-logo brand-logo-light" src="/brand-icon-light.svg" alt="" />
+      <img className="brand-logo brand-logo-dark" src="/brand-icon-dark.svg" alt="" />
       <span className="brand-wordmark">
         <b>STOCK</b>LENS
       </span>

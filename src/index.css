@@ -170,3 +170,5 @@ html[data-theme="dark"] .up{color:#86a7ff!important}
 html[data-theme="dark"] .neutral-change{color:#a9b8ce!important}
 html[data-theme="dark"] .wallet-button,html[data-theme="dark"] .theme-toggle,html[data-theme="dark"] .ranges button,html[data-theme="dark"] .chart-modes button{color:#e3ecfb}
 @media(max-width:900px){.asset-list{max-height:430px}.research-grid{align-items:start}.tape{margin-top:40px}}
+
+.brand-logo-dark{display:none}html[data-theme="dark"] .brand-logo-light{display:none}html[data-theme="dark"] .brand-logo-dark{display:block}
