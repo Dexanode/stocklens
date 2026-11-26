@@ -70,7 +70,7 @@ export default async function handler(request, response) {
   try {
     const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
     const universe = Array.isArray(input?.universe) ? input.universe.slice(0, 24) : []
-    const holdings = Array.isArray(input?.holdings) ? input.holdings.slice(0, 12) : []
+    const holdings = Array.isArray(input?.holdings) ? input.holdings.slice(0, 24) : []
     if (!universe.length) return response.status(400).json({ error: 'Portfolio payload requires a B20 asset universe' })
 
     // Only history *statistics* go to Vikey — historyCount, historyChangePct,
@@ -148,12 +148,21 @@ export default async function handler(request, response) {
     const result = parseModelJson(content)
     const symbols = new Set(compactUniverse.map((asset) => asset.symbol))
     const allocations = Array.isArray(result?.allocations) ? result.allocations : []
-    const total = allocations.reduce((sum, item) => sum + Number(item.targetPercent || 0), 0)
-    if (!result?.summary || !Array.isArray(result?.actions) || allocations.length !== compactUniverse.length || Math.round(total) !== 100 || allocations.some((item) => !symbols.has(item.symbol))) {
+    const seen = new Set()
+    const unavailable = new Set(compactUniverse.filter((asset) => asset.price === '—' || asset.dataQuality?.nav === false).map((asset) => asset.symbol))
+    let total = 0
+    const validWeights = allocations.every((item) => {
+      const weight = item?.targetPercent
+      if (!symbols.has(item?.symbol) || seen.has(item.symbol) || !Number.isInteger(weight) || weight < 0 || weight > 100) return false
+      seen.add(item.symbol)
+      total += weight
+      return weight === 0 || !unavailable.has(item.symbol)
+    })
+    if (!result?.summary || !Array.isArray(result?.actions) || !validWeights || allocations.length !== compactUniverse.length || total !== 100) {
       return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings, 'invalid_allocation', {
         expectedCount: compactUniverse.length, receivedCount: allocations.length,
         total: Number.isFinite(total) ? total : null,
-        unknownSymbols: allocations.filter((item) => !symbols.has(item.symbol)).length,
+        unknownSymbols: allocations.filter((item) => !symbols.has(item?.symbol)).length,
         missingSummary: !result?.summary, missingActions: !Array.isArray(result?.actions),
         finishReason: typeof payload.choices?.[0]?.finish_reason === 'string' ? payload.choices[0].finish_reason.slice(0, 32) : null,
       }))
