@@ -12,6 +12,7 @@ import { useAccount, WagmiProvider } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
 import "./index.css";
 import "./b20.css";
+import "./market-layout.css";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -471,6 +472,7 @@ function App() {
     const coverageDays = first && latest ? Math.max(0, Math.round((Number(latest.timestamp) - Number(first.timestamp)) / 864e5)) : 0;
     return {
       count: snapshots.length,
+      period: [first, latest].filter(Boolean).map(row => new Date(Number(row.timestamp)).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })).filter((date, index, dates) => dates.indexOf(date) === index).join(" – "),
       coverageDays,
       latest: latest?.timestamp ? new Date(Number(latest.timestamp)).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "Awaiting first observation",
     };
@@ -552,6 +554,7 @@ function App() {
       return { ...item, currentValue, targetValue, deltaValue, action: deltaValue > 0.5 ? "ADD" : deltaValue < -0.5 ? "REDUCE" : "HOLD" };
     });
   }, [portfolioPlan, portfolioMetrics, rebalanceRows, targetPortfolio]);
+  const largestMove = previewRows.reduce((best, row) => !best || Math.abs(row.deltaValue) > Math.abs(best.deltaValue) ? row : best, null);
 
   useEffect(() => {
     setWallet(address || "");
@@ -1150,6 +1153,8 @@ function App() {
                 Research / <b>Market overview</b>
           </div>
           <div className="top-actions">
+            <button className="theme-toggle demo-launch" onClick={startJudgeDemo} disabled={judgeRunning || portfolioAgentLoading}>{judgeRunning ? "Running demo…" : "Start demo"}</button>
+            {judgeStep === 4 && <a href="#simulate">View plan</a>}
                 <span className="paper-badge">Paper only</span>
             <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
               {theme === "dark" ? "Light" : "Dark"}
@@ -1161,108 +1166,15 @@ function App() {
           </div>
         </header>
         <main>
-          <section id="overview" className="overview-section">
-            <div className="overview-heading">
-              <div>
-                <div className="kicker">
-                  <span>01</span> DAILY BRIEFING / {new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date()).toUpperCase()}
-                </div>
-                <h1>
-                  Research the
-                  <br />
-                  <em>signal.</em>
-                </h1>
-                <p>
-                  A focused terminal for understanding tokenized stock activity
-                  on Base. Read the thesis before you make the move.
-                </p>
-                <div className="judge-demo" aria-label="Judge Mode product walkthrough">
-                  <div className="judge-demo-head">
-                    <div>
-                      <span className="kicker">JUDGE MODE / 60-SECOND WALKTHROUGH</span>
-                      <strong>From signal to proof.</strong>
-                    </div>
-                    <span className="judge-guardrail">PAPER ONLY · NO LIVE ORDER</span>
-                  </div>
-                  <div className="judge-steps">
-                    {["Research", "Decide", "Rebalance", "Verify"].map((label, index) => {
-                      const step = index + 1;
-                      return (
-                        <button
-                          key={label}
-                          type="button"
-                          className={judgeStep === step ? "active" : judgeStep > step ? "complete" : ""}
-                          onClick={() => setJudgeStep(step)}
-                        >
-                          <b>0{step}</b><span>{label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <div className="judge-demo-body">
-                    <p>
-                      {judgeStep === 0 && "Run the complete StockLens loop: live B20 reference data, transparent allocation, paper rebalance, and an optional Base Sepolia research proof."}
-                      {judgeStep === 1 && `Researching ${selected}: NAV freshness, supply, momentum, and risk context.`}
-                      {judgeStep === 2 && "The agent turns the market read into a thesis with confidence and explicit reasons."}
-                      {judgeStep === 3 && (portfolioPlan ? "Target allocation is ready. Open Paper Lab to inspect current vs target and the dollar delta." : "Portfolio Agent is preparing target allocation across the B20 universe.")}
-                      {judgeStep === 4 && "The result is reviewable and reversible: apply to the local paper book, then optionally record the thesis on Base Sepolia."}
-                    </p>
-                    <div className="judge-proof-grid">
-                      <span><small>Market data</small><b>Base Mainnet / 8453</b></span>
-                      <span><small>Paper registry</small><b>Base Sepolia / 84532</b></span>
-                      <span><small>Proof status</small><b>{txHash ? "TX RECORDED" : "READY WHEN YOU CONFIRM"}</b></span>
-                    </div>
-                  </div>
-                  <div className="judge-demo-actions">
-                    <button type="button" className="judge-primary" onClick={startJudgeDemo} disabled={judgeRunning}>{judgeRunning ? "WALKTHROUGH RUNNING…" : judgeStep ? "REPLAY WALKTHROUGH ↗" : "RUN 60-SECOND DEMO ↗"}</button>
-                    <a href="#simulate" className="judge-secondary">OPEN PAPER LAB</a>
-                  </div>
-                </div>
-              </div>
-              <div className="market-state">
-                <span>Market state</span>
-                <strong>Constructive</strong>
-                <small>Risk appetite is holding</small>
-                <div className="state-line">
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                  <i />
-                </div>
-              </div>
-            </div>
-            <div className="tape">
-              <span>Market tape</span>
-              {Object.entries(marketAssets).map(([symbol, item]) => (
-                <button key={symbol} onClick={() => pick(symbol)}>
-                  <b>{symbol}</b>
-                  <strong>{item.price}</strong>
-                  <small
-                    className={changeTone(item.change)}
-                  >
-                    {item.change}
-                  </small>
-                </button>
-              ))}
-              <span className="tape-end">{dataMode === "B20 MAINNET" ? "LIVE NAV / BASE 8453 ↗" : "NAV UNAVAILABLE / NO CLAIM"}</span>
-            </div>
-          </section>
+          <div id="overview" />
           <section id="watchlist" className="research-grid">
             <div className="watchlist-panel panel">
               <div className="panel-head">
                 <div>
-                  <span className="kicker">
-                    WATCHLIST
-                  </span>
-                  <h2>
-                    Market <em>map</em>
-                  </h2>
+                  <h2>Watchlist</h2>
                 </div>
                   <div className="watchlist-tools">
-                    <label className="market-search">
+                    <label className="market-search" id="asset-search">
                       <span>Search</span>
                       <input value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder="Ticker or name" aria-label="Search markets" />
                     </label>
@@ -1294,7 +1206,7 @@ function App() {
                       <small
                         className={changeTone(item.change)}
                       >
-                        {item.change}
+                        {item.change === "N/A" ? "—" : item.change}
                       </small>
                     </span>
                     <span className="row-arrow">↗</span>
@@ -1307,6 +1219,7 @@ function App() {
               </div>
             </div>
             <div className="chart-panel panel">
+              <a className="switch-asset" href="#asset-search" onClick={() => document.querySelector(".market-search input")?.focus()}>Search assets ↓</a>
               <div className="panel-head chart-head">
                 <div>
                   <span className="kicker">
@@ -1318,10 +1231,11 @@ function App() {
                 </div>
                 <div className="asset-quote">
                   <strong>{asset.price}</strong>
+                  <small>Latest NAV · {asset.time}</small>
                   <span
                     className={changeTone(asset.change)}
                   >
-                    {asset.change}
+                    {asset.change === "N/A" ? "— No comparison price" : asset.change}
                   </span>
                 </div>
               </div>
@@ -1410,7 +1324,7 @@ function App() {
                     : "B20 NAV reference"}
                 </span>
                 <span>
-                  {chartHistoryMeta.count} obs · {chartHistoryMeta.coverageDays}d coverage · {asset.time}
+                  {chartHistoryMeta.period || "Awaiting NAV history"} · {chartHistoryMeta.count} snapshots · UTC
                 </span>
               </div>
             </div>
@@ -1559,6 +1473,9 @@ function App() {
                 {portfolioPlan && (
                   <div className="agent-plan">
                     <strong>{portfolioPlan.summary}</strong>
+                    {largestMove && <div className="largest-move"><small>Largest change by value</small><strong>{largestMove.symbol} · {largestMove.currentPercent.toFixed(1)}% → {largestMove.targetPercent}%</strong><span>{largestMove.deltaValue < 0 ? "Reduce" : largestMove.deltaValue > 0 ? "Add" : "Hold"} {formatUSD(Math.abs(largestMove.deltaValue))}</span><p>{largestMove.reason}</p></div>}
+                    <button className="apply-agent-button" onClick={() => setPortfolioPreview(true)}>Preview target changes ↗</button>
+                    <details><summary>All {rebalanceRows.length} allocations</summary>
                     <div className="rebalance-table" aria-label="Paper portfolio rebalance diff">
                       <div className="rebalance-head"><span>Asset</span><span>Current</span><span>Target</span><span>Delta</span><span>Action</span></div>
                       {rebalanceRows.map((item) => (
@@ -1584,7 +1501,7 @@ function App() {
                       {portfolioPlan.actions.map((action) => <li key={action}>{action}</li>)}
                     </ul>
                     <small className="agent-note">{portfolioPlan.rebalanceNote} · {portfolioPlan.paperOnly ? "PAPER ONLY" : "REVIEW BEFORE USE"}</small>
-                    <button className="apply-agent-button" onClick={() => setPortfolioPreview(true)}>Preview target changes ↗</button>
+                    </details>
                     {portfolioPreview && (
                       <div className="portfolio-preview" aria-label="Paper portfolio target preview">
                         <div className="portfolio-preview-head"><span>Apply target preview</span><b>${Number(budget).toLocaleString()} paper budget</b></div>

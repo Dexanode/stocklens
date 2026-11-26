@@ -1,0 +1,15 @@
+.research-grid .watchlist-panel h2 {font-size:1.4rem;letter-spacing:-.025em}
+.research-grid .asset-list {max-height:23rem;overflow:auto}
+.asset-quote small,.largest-move small {font-size:.8rem}
+.switch-asset {display:none}
+.largest-move {display:grid;gap:.4rem;padding:.85rem 0;border-block:1px solid currentColor}
+.agent-plan details summary {cursor:pointer;padding:.7rem 0}
+@media(min-width:901px){.research-grid#watchlist {display:grid;grid-template-columns:minmax(18rem,2fr) minmax(0,3fr)}}
+@media(max-width:900px){
+  .research-grid#watchlist {display:flex;flex-direction:column}
+  .research-grid .chart-panel {order:-1}
+  .switch-asset {display:inline-block;margin:1rem;text-decoration:underline}
+  .topbar .top-actions {display:flex;flex-wrap:wrap;gap:.4rem}
+  .topbar .demo-launch {display:inline-flex}
+  #asset-search {scroll-margin-top:6rem}
+}
