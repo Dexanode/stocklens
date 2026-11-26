@@ -1392,9 +1392,9 @@ function App() {
                   role="img"
                   aria-label={`${chartType} chart for ${selected} over ${range}`}
                 >
-                  {chartType === "candles" && chartCandles.length ? (
+                  {chartType === "candles" && chartCandles.length >= 2 ? (
                     <CandleChart candles={chartCandles} color={asset.color} range={range} />
-                  ) : chartPoints ? (
+                  ) : chartType !== "candles" && chartPoints ? (
                     <>
                       <polyline
                         points={`${chartPoints.split(" ")[0].split(",")[0]},90 ${chartPoints} ${chartPoints.split(" ").at(-1).split(",")[0]},90`}
@@ -1410,7 +1410,15 @@ function App() {
                     </>
                   ) : null}
                 </svg>
-                {!chartPoints && !chartCandles.length && (
+                {chartType === "candles" && chartCandles.length < 2 && (
+                  <div className="chart-empty" role="status" aria-live="polite">
+                    <strong>Collecting daily NAV history</strong>
+                    <span>{chartCandles.length} daily candle available</span>
+                    <small>At least 2 days of NAV observations are needed to display a candle chart.</small>
+                    <small>Switch to Line to view the available snapshots.</small>
+                  </div>
+                )}
+                {chartType !== "candles" && !chartPoints && (
                   <div className="chart-empty" role="status" aria-live="polite">
                     <div className="chart-empty-mark" aria-hidden="true"><i /><i /><i /><i /><i /></div>
                     <strong>{chartHistoryMeta.count < 3 ? "COLLECTING NAV HISTORY" : "HISTORY RANGE UNAVAILABLE"}</strong>
