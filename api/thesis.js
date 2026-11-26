@@ -23,9 +23,9 @@ async function readTheses(token) {
   return found ? value : []
 }
 
-// Returns the error response for a store-read failure or an
-// unconfirmed write, or null when the error is not one of those (the
-// outer catch then handles it).
+// Returns the error response for a store-read failure or a failed
+// write (put() threw on every attempt), or null when the error is not
+// one of those (the outer catch then handles it).
 function storeErrorResponse(response, error) {
   if (error instanceof BlobReadError || error instanceof BlobWriteError) {
     return response.status(error.status).json({ persistent: false, error: error.message, code: error.code })
@@ -181,18 +181,22 @@ export default async function handler(request, response) {
       const editToken = crypto.randomUUID()
       const next = { ...sanitize(input, id), editToken }
       if (!hasContent(next)) return response.status(400).json({ error: 'Thesis requires at least a symbol, title, or note.' })
-      // Rev 6: verified write. A 200 now means a fresh re-read showed
-      // the new record AND no record the write contained went missing;
-      // anything else is a 503 (thesis_store_not_confirmed), never a
-      // 200 for a write that may not have persisted.
-      let verified
+      // Rev 7: put() succeeding IS the write (rev 6's verify-as-gate
+      // returned false 503s for writes that had landed, because Blob
+      // reads lag writes by ~10–25 s). The response carries the record
+      // as written, the edit token, and a `verified` flag: a fresh
+      // re-read has (true) or has not yet (false) seen the change.
+      // `verified: false` is a normal outcome under propagation lag —
+      // the record is stored, the UI just re-fetches later.
+      let written
+      let writeVerified = false
       try {
-        verified = await readModifyWrite({
+        ({ value: written, verified: writeVerified } = await readModifyWrite({
           list, put, token, path: PATH,
           validate: Array.isArray, empty: [],
           unavailableCode: 'thesis_store_unavailable',
           corruptCode: 'thesis_store_corrupt',
-          notConfirmedCode: 'thesis_store_not_confirmed',
+          writeFailedCode: 'thesis_store_write_failed',
           mutate: (theses) => {
             if (theses.some((item) => item.id === id)) return theses
             return [next, ...theses].slice(0, MAX_ITEMS)
@@ -202,19 +206,19 @@ export default async function handler(request, response) {
             if (!created || created.editToken !== editToken) return false
             return written.every((item) => stored.some((row) => row.id === item.id))
           },
-        })
+        }))
       } catch (error) {
         const handled = writeErrorResponse(response, error)
         if (handled) return handled
         throw error
       }
-      const created = verified.find((item) => item.id === id)
-      if (!created) return response.status(503).json({ persistent: false, error: 'Thesis write could not be confirmed.', code: 'thesis_store_not_confirmed' })
+      const created = written.find((item) => item.id === id)
+      if (!created) throw new Error('Thesis write did not include the new record.')
       response.setHeader('Cache-Control', 'no-store')
       // The editToken is returned ONLY here, once, at creation. It is
       // never in a GET response, never in a PUT response, and never in a
       // share link (?thesisId= carries the id only).
-      return response.status(200).json({ persistent: true, thesis: publicThesis(created), editToken })
+      return response.status(200).json({ persistent: true, thesis: publicThesis(created), editToken, verified: writeVerified, pendingPropagation: !writeVerified })
     }
 
     // PUT: proof of ownership via the x-edit-token header.
@@ -222,19 +226,20 @@ export default async function handler(request, response) {
     if (!id) return response.status(400).json({ error: 'Missing thesis id.' })
     const supplied = clean(request.headers?.['x-edit-token'], 200)
     // The merged record is computed once, before the write loop, so a
-    // retry re-applies the identical change (rev 6: mutate idempotent).
+    // retry re-applies the identical change (mutate must stay idempotent).
     // The ownership checks run inside mutate on every attempt, against
     // the freshest read, and abort with FailRequest (no write, no retry).
     const sanitized = sanitize(input, id)
     let merged = null
-    let verified
+    let written
+    let writeVerified = false
     try {
-      verified = await readModifyWrite({
+      ({ value: written, verified: writeVerified } = await readModifyWrite({
         list, put, token, path: PATH,
         validate: Array.isArray, empty: [],
         unavailableCode: 'thesis_store_unavailable',
         corruptCode: 'thesis_store_corrupt',
-        notConfirmedCode: 'thesis_store_not_confirmed',
+        writeFailedCode: 'thesis_store_write_failed',
         mutate: (theses) => {
           // PUT must only update a thesis that already exists. It never
           // creates one: previously a PUT with a new id silently inserted
@@ -267,19 +272,21 @@ export default async function handler(request, response) {
           if (!row || row.status !== merged.status || row.updatedAt !== merged.updatedAt || row.reviewCount !== merged.reviewCount || row.editToken !== merged.editToken) return false
           return written.every((item) => stored.some((r) => r.id === item.id))
         },
-      })
+      }))
     } catch (error) {
       const handled = writeErrorResponse(response, error)
       if (handled) return handled
       throw error
     }
-    // The response carries the record as the fresh re-read confirmed it,
-    // not the in-memory merge — the frontend adopts this as the source of
-    // truth (rev 6).
-    const persisted = verified.find((item) => item.id === id)
-    if (!persisted) return response.status(503).json({ persistent: false, error: 'Thesis write could not be confirmed.', code: 'thesis_store_not_confirmed' })
+    // Rev 7: the response carries the record as written (put()
+    // succeeded), plus a `verified` flag for whether a fresh re-read
+    // has already seen it. The frontend adopts this as the source of
+    // truth; on `pendingPropagation` it re-fetches later instead of
+    // assuming the change is visible yet.
+    const persisted = written.find((item) => item.id === id)
+    if (!persisted) throw new Error('Thesis write did not include the updated record.')
     response.setHeader('Cache-Control', 'no-store')
-    return response.status(200).json({ persistent: true, thesis: publicThesis(persisted) })
+    return response.status(200).json({ persistent: true, thesis: publicThesis(persisted), verified: writeVerified, pendingPropagation: !writeVerified })
   } catch (error) {
     return response.status(500).json({ persistent: false, error: error instanceof Error ? error.message : 'Thesis persistence unavailable.' })
   }

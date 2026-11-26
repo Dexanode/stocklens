@@ -1,11 +1,25 @@
-// Handler integration tests for api/thesis.js (rev 6).
+// Handler integration tests for api/thesis.js (rev 7).
 //
-// Proves the rev 6 guarantee end-to-end through the real handler: a PUT
-// or POST returns 200 ONLY when a fresh re-read shows the change
-// persisted. A stale verify read retries the whole cycle; if no attempt
-// confirms, the handler answers 503 (thesis_store_not_confirmed) — never
-// a false 200 like the one observed live 26 Nov 2026 (PUT 200 at
-// 14:48:08, GETs at ~14:49–14:50 still showed the old status).
+// Rev 7 contract change — read this before touching these tests: a
+// successful put() IS the write. Rev 6 gated success on a verify
+// re-read and answered 503 when the re-read could not see a landed
+// write; live on the 26 Nov 2026 preview, Blob reads lag writes by
+// ~10–25 s, so that gate produced false 503s (POST returned 503 for
+// th_a3aa861e…, which WAS stored — the UI never got the edit token and
+// the thesis became uneditable; 0 PUTs in the function logs). Rev 7
+// answers 200 with the record as written plus the edit token whenever
+// put() succeeds, and reports `verified` / `pendingPropagation` for
+// whether a fresh re-read on a bounded schedule has already seen the
+// change. `verified: false` is a normal outcome under propagation lag,
+// never an error. A 503 now happens ONLY when put() itself throws on
+// every attempt (thesis_store_write_failed) or the pre-write read
+// fails outright (rev 4 fail-closed).
+//
+// The old rev-6 tests "PUT/POST that never confirms returns 503" are
+// therefore REPLACED here by their rev-7 opposites: a write whose
+// verify reads never see it must return 200 with verified:false —
+// never a 503. That replacement is the point of this revision, not a
+// weakening: the write demonstrably landed (the put body holds it).
 //
 // Also proves the Finding-1 server contract: the server assigns the id
 // (a client-supplied id is ignored), and GET ?thesisId=<server id>
@@ -30,7 +44,10 @@ function listFindsFile() {
 
 // fetch that consumes `script` in order (one entry per fetch call; the
 // last entry repeats). An entry may be a function receiving stub, so a
-// test can answer with the latest put body.
+// test can answer with the latest put body. NOTE (rev 7): the handler
+// now makes up to 3 initial reads before the put, so scripts need at
+// least 3 entries before any latestPutBody entry — before the first put
+// there is no put body to read.
 function scriptedFetch(script) {
   let i = 0
   return async () => {
@@ -55,6 +72,12 @@ after(async () => {
   await cleanup()
 })
 
+function resetStub() {
+  stub.putCalls.length = 0
+  stub.failPutTimes = 0
+  stub.failPutAfterApplyTimes = 0
+}
+
 function putStatus(token = 'tok-1') {
   return fakeRequest({
     method: 'PUT',
@@ -63,80 +86,122 @@ function putStatus(token = 'tok-1') {
   })
 }
 
-describe('thesis handler: a write is 200 only when a fresh re-read confirms it (rev 6)', () => {
-  it('PUT with a stale verify read retries and confirms (no false 200, no lost update)', async () => {
+describe('thesis handler: put() succeeding IS the write (rev 7)', () => {
+  it('PUT with a stale verify read confirms within the budget (200, verified true, one put)', async () => {
     stub.list = listFindsFile()
-    stub.putCalls.length = 0
-    // Call 1 (initial read): old list. Call 2 (verify): still the old
-    // list — the stale read observed live. Call 3 (retry read) and 4
-    // (verify): the latest put body, i.e. the write is now visible.
-    globalThis.fetch = scriptedFetch([EXISTING, EXISTING, latestPutBody(stub), latestPutBody(stub)])
+    resetStub()
+    // Calls 1–3 (initial reads): old list. Call 4 (verify #1): still
+    // the old list — the stale read observed live. Call 5 (verify #2):
+    // the latest put body, i.e. the write is now visible.
+    globalThis.fetch = scriptedFetch([EXISTING, EXISTING, EXISTING, EXISTING, latestPutBody(stub)])
     const res = fakeResponse()
     await handler(putStatus(), res)
     assert.equal(res.statusCode, 200)
-    assert.equal(res.body.thesis.status, 'MONITORING', 'response carries the record as the re-read confirmed it')
+    assert.equal(res.body.thesis.status, 'MONITORING', 'response carries the record as written')
+    assert.equal(res.body.verified, true)
+    assert.equal(res.body.pendingPropagation, false)
     assert.equal(res.body.thesis.editToken, undefined, 'token never leaks in a PUT response')
-    assert.equal(stub.putCalls.length, 2, 'first attempt unconfirmed, second attempt re-ran the cycle')
+    assert.equal(stub.putCalls.length, 1, 'no whole-cycle retry: the soft verify retried, not the write')
     const finalBody = JSON.parse(stub.putCalls.at(-1).body)
     assert.equal(finalBody.find((row) => row.id === 'th_old').status, 'MONITORING')
   })
 
-  it('PUT that never confirms returns 503 thesis_store_not_confirmed, never 200', async () => {
+  it('PUT whose verify reads NEVER see the write still returns 200 with verified:false — never 503 (the rev 6 regression)', async () => {
     stub.list = listFindsFile()
-    stub.putCalls.length = 0
-    // Every read returns the old list: the write never becomes visible.
+    resetStub()
+    // Every read returns the old list: the write never becomes visible
+    // inside the verify window — exactly the live rev-6 case.
+    globalThis.fetch = scriptedFetch([EXISTING])
+    const res = fakeResponse()
+    await handler(putStatus(), res)
+    assert.equal(res.statusCode, 200, 'put() succeeded, so the write succeeded')
+    assert.equal(res.body.thesis.status, 'MONITORING', 'the response carries the record as written')
+    assert.equal(res.body.verified, false)
+    assert.equal(res.body.pendingPropagation, true, 'the UI is told to re-fetch later, not that the write failed')
+    assert.equal(stub.putCalls.length, 1, 'the write landed once')
+    const finalBody = JSON.parse(stub.putCalls.at(-1).body)
+    assert.equal(finalBody.find((row) => row.id === 'th_old').status, 'MONITORING', 'the put body really holds the change')
+  })
+
+  it('PUT on a healthy store returns 200 with one put and the written record', async () => {
+    stub.list = listFindsFile()
+    resetStub()
+    globalThis.fetch = scriptedFetch([EXISTING, EXISTING, EXISTING, latestPutBody(stub)])
+    const res = fakeResponse()
+    await handler(putStatus(), res)
+    assert.equal(res.statusCode, 200)
+    assert.equal(res.body.thesis.status, 'MONITORING')
+    assert.equal(res.body.verified, true)
+    assert.equal(stub.putCalls.length, 1)
+    assert.equal(stub.putCalls[0].opts.cacheControlMaxAge, 0, 'writes must not be edge-cached afterwards')
+  })
+
+  it('POST with lagging verify reads returns 200 + token, one put, no duplicate', async () => {
+    stub.list = listFindsFile()
+    resetStub()
+    // Calls 1–3: empty store. Call 4 (verify #1): still empty — stale.
+    // Call 5 (verify #2): the record is now visible.
+    globalThis.fetch = scriptedFetch([[], [], [], [], latestPutBody(stub)])
+    const res = fakeResponse()
+    await handler(fakeRequest({ method: 'POST', body: { symbol: 'AAPLc', title: 'New', note: 'n' } }), res)
+    assert.equal(res.statusCode, 200)
+    assert.equal(stub.putCalls.length, 1, 'one put: the soft verify retried, the write did not')
+    assert.ok(res.body.thesis.id.startsWith('th_'))
+    assert.ok(res.body.editToken, 'the token IS returned on a 200 create — the rev-6 503 withheld it')
+    assert.equal(res.body.verified, true)
+  })
+
+  it('POST whose verify reads NEVER see the write still returns 200 + token with verified:false — never 503', async () => {
+    stub.list = listFindsFile()
+    resetStub()
+    globalThis.fetch = scriptedFetch([[]])
+    const res = fakeResponse()
+    await handler(fakeRequest({ method: 'POST', body: { symbol: 'AAPLc', title: 'New', note: 'n' } }), res)
+    assert.equal(res.statusCode, 200)
+    assert.equal(stub.putCalls.length, 1, 'the write landed once')
+    assert.ok(res.body.thesis.id.startsWith('th_'))
+    assert.ok(res.body.editToken, 'the creator gets the token even though the write is not yet visible to reads')
+    assert.equal(res.body.verified, false)
+    assert.equal(res.body.pendingPropagation, true)
+    const written = JSON.parse(stub.putCalls[0].body)
+    assert.equal(written.length, 1, 'exactly one record was written')
+  })
+
+  it('put() throwing on every attempt returns 503 thesis_store_write_failed, never 200', async () => {
+    stub.list = listFindsFile()
+    resetStub()
+    stub.failPutTimes = 99
     globalThis.fetch = scriptedFetch([EXISTING])
     const res = fakeResponse()
     await handler(putStatus(), res)
     assert.equal(res.statusCode, 503)
-    assert.equal(res.body.code, 'thesis_store_not_confirmed')
-    assert.ok(!res.body.thesis, 'no thesis on an unconfirmed write')
-    assert.equal(stub.putCalls.length, 3, 'all three attempts must be tried before giving up')
+    assert.equal(res.body.code, 'thesis_store_write_failed')
+    assert.ok(!res.body.thesis, 'no thesis when the write itself failed')
+    assert.equal(stub.putCalls.length, 0, 'no successful put was recorded')
   })
 
-  it('PUT on a healthy store returns 200 with one put and the confirmed record', async () => {
-    stub.list = listFindsFile()
-    stub.putCalls.length = 0
-    globalThis.fetch = scriptedFetch([EXISTING, latestPutBody(stub)])
+  it('initial read failing once then succeeding -> the write proceeds (200)', async () => {
+    let listCalls = 0
+    stub.list = async (opts) => {
+      listCalls++
+      if (listCalls === 1) throw new Error('Blob list unavailable')
+      return { blobs: [{ pathname: opts.prefix, url: 'https://blob.test/theses.json' }] }
+    }
+    resetStub()
+    globalThis.fetch = scriptedFetch([EXISTING, EXISTING, EXISTING, latestPutBody(stub)])
     const res = fakeResponse()
     await handler(putStatus(), res)
     assert.equal(res.statusCode, 200)
     assert.equal(res.body.thesis.status, 'MONITORING')
     assert.equal(stub.putCalls.length, 1)
-    assert.equal(stub.putCalls[0].opts.cacheControlMaxAge, 0, 'writes must not be edge-cached afterwards')
-  })
-
-  it('POST with a stale verify read does not mint a second record on retry', async () => {
-    stub.list = listFindsFile()
-    stub.putCalls.length = 0
-    // Call 1: empty store. Call 2 (verify): still empty — stale.
-    // Call 3 (retry read): the record is now visible, so the idempotent
-    // mutate short-circuits and no second put happens.
-    globalThis.fetch = scriptedFetch([[], [], latestPutBody(stub)])
-    const res = fakeResponse()
-    await handler(fakeRequest({ method: 'POST', body: { symbol: 'AAPLc', title: 'New', note: 'n' } }), res)
-    assert.equal(res.statusCode, 200)
-    assert.equal(stub.putCalls.length, 1, 'a retry after a landed put must not create a duplicate')
-    assert.ok(res.body.thesis.id.startsWith('th_'))
-  })
-
-  it('POST that never confirms returns 503 thesis_store_not_confirmed', async () => {
-    stub.list = listFindsFile()
-    stub.putCalls.length = 0
-    globalThis.fetch = scriptedFetch([[]])
-    const res = fakeResponse()
-    await handler(fakeRequest({ method: 'POST', body: { symbol: 'AAPLc', title: 'New', note: 'n' } }), res)
-    assert.equal(res.statusCode, 503)
-    assert.equal(res.body.code, 'thesis_store_not_confirmed')
-    assert.equal(stub.putCalls.length, 3)
   })
 })
 
 describe('thesis handler: the server assigns the id; the share link must use it (Finding 1)', () => {
   it('POST ignores the client id, GET ?thesisId=<server id> resolves, GET ?thesisId=<client id> 404s', async () => {
     stub.list = listFindsFile()
-    stub.putCalls.length = 0
-    globalThis.fetch = scriptedFetch([[], latestPutBody(stub)])
+    resetStub()
+    globalThis.fetch = scriptedFetch([[], [], [], latestPutBody(stub)])
     const postRes = fakeResponse()
     await handler(fakeRequest({ method: 'POST', body: { id: 'AAPLc-12345', symbol: 'AAPLc', title: 'Client id', note: 'n' } }), postRes)
     assert.equal(postRes.statusCode, 200)

@@ -51,9 +51,14 @@ export async function loadHandler(entry) {
   await writeFile(
     join(dir, 'node_modules', '@vercel', 'blob', 'index.mjs'),
     `export async function list(opts) { return globalThis.__stocklensBlobStub.list(opts) }\n` +
-      `export async function put(path, body, opts) { globalThis.__stocklensBlobStub.putCalls.push({ path, body, opts }); return { url: 'https://blob.test/' + path } }\n`,
+      `export async function put(path, body, opts) {\n` +
+      `  const stub = globalThis.__stocklensBlobStub\n` +
+      `  if (stub.failPutTimes > 0) { stub.failPutTimes--; throw new Error('put transport failed') }\n` +
+      `  if (stub.failPutAfterApplyTimes > 0) { stub.failPutAfterApplyTimes--; stub.putCalls.push({ path, body, opts }); throw new Error('put transport failed after write') }\n` +
+      `  stub.putCalls.push({ path, body, opts }); return { url: 'https://blob.test/' + path }\n` +
+      `}\n`,
   )
-  const stub = { putCalls: [], list: async () => ({ blobs: [] }) }
+  const stub = { putCalls: [], failPutTimes: 0, failPutAfterApplyTimes: 0, list: async () => ({ blobs: [] }) }
   globalThis.__stocklensBlobStub = stub
   const mod = await import(pathToFileURL(join(dir, 'api', entry)).href)
   return { handler: mod.default, stub, dir, cleanup: () => rm(dir, { recursive: true, force: true }) }

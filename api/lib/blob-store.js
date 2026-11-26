@@ -32,10 +32,14 @@ export class BlobReadError extends Error {
   }
 }
 
-// Thrown when a write was attempted but its effect could not be confirmed
-// by a fresh re-read after all retries (rev 6). The handler answers 503
-// with this code — never 200 — so a caller can never mistake an
-// unconfirmed write for a persisted one.
+// Thrown when a write's put() itself fails on every attempt (rev 7).
+// A successful put() is never this error: rev 6 also threw it when a
+// verify re-read could not see a landed write, which produced false
+// 503s live (a POST returned 503 for a thesis that WAS stored, so the
+// UI never received the edit token and the thesis became uneditable).
+// That is gone: put() succeeding is the write succeeding, and whether
+// a fresh re-read has already seen the change is reported separately
+// as `verified` (see readModifyWrite), never as a 503.
 export class BlobWriteError extends Error {
   constructor(code, status, message) {
     super(message)
@@ -135,42 +139,89 @@ export async function readBlobJson({
   return { found: true, value: payload }
 }
 
-// Verified read-modify-write (rev 6).
+// Freshness score for a stored snapshot: [newest record timestamp, record
+// count]. Every mutation bumps `updatedAt` (theses) or appends a newer
+// `timestamp` (NAV history points), so a snapshot with a newer max
+// timestamp is fresher; the count only breaks ties. A genuinely missing
+// file scores [0, 0]. This is a heuristic, not a version: two snapshots
+// with equal timestamps but different content cannot be ordered, and a
+// stale snapshot can still win if every read in the window is stale —
+// the caller must not treat "freshest of N reads" as "current".
+function defaultFreshness(value) {
+  let maxTs = 0
+  let count = 0
+  const scan = (row) => {
+    if (!row || typeof row !== 'object') return
+    count++
+    for (const key of ['updatedAt', 'timestamp', 'createdAt']) {
+      const ts = Date.parse(row[key])
+      if (Number.isFinite(ts) && ts > maxTs) maxTs = ts
+    }
+  }
+  if (Array.isArray(value)) value.forEach(scan)
+  else if (value && typeof value === 'object') {
+    for (const rows of Object.values(value)) if (Array.isArray(rows)) rows.forEach(scan)
+  }
+  return [maxTs, count]
+}
+
+function fresher(a, b) {
+  // Strictly-greater wins, so identical snapshots keep the first one read.
+  return a[0] > b[0] || (a[0] === b[0] && a[1] > b[1])
+}
+
+// Read-modify-write with honest, lag-aware semantics (rev 7).
 //
-// Why this exists: every Blob write in api/ used to be read -> modify in
-// memory -> put -> 200, with no check that the write ever became visible
-// and no defence against a stale read. Observed live 26 Nov 2026:
-//   - a status PUT returned 200 nineteen seconds after its thesis was
-//     created, yet GETs a minute later still showed the old status
-//     (updatedAt = creation time): the 200 was a lie;
-//   - a share POST's record (id th_f4005b18…) never appeared in the
-//     store while the save POST's record did: a later PUT read a stale
-//     list and wrote it back, silently wiping the newer record.
-// The file is overwritten in place under a stable URL, Vercel Blob has no
-// versioning / compare-and-swap, and a plain fetch of the URL can serve a
-// cached copy — so a bare read-modify-write cannot tell a fresh read from
-// a stale one. This helper makes the failure loud instead of silent:
+// Why rev 6 was wrong: it treated a successful put() as unproven until
+// a fresh re-read showed the mutation, and answered 503 otherwise. Live
+// on the 26 Nov 2026 preview, Blob reads lag writes by ~10–25 s (a GET
+// of a just-created id 404'd at +24 s and returned 200 at +40 s), so
+// the verify re-read routinely missed a write that had landed:
+//   - POST /api/thesis returned 503 for th_a3aa861e…, which WAS in the
+//     store — the UI never received the edit token, so no PUT was ever
+//     sent (0 PUTs in the function logs) and the thesis was stored but
+//     uneditable from the UI;
+//   - a share GET-verify 404'd on a stale read and re-created the
+//     thesis, storing the same thesis twice.
+// A re-read can therefore never be the gate for a write's success: the
+// read side is the lagging side. The put() call is the success signal.
 //
-//   1. read (fail-closed, rev 4 — a failed read aborts before any write),
+// Rev 7 contract — returns { value, verified }:
+//   1. read, fail-closed (rev 4), but read up to `readAttempts` times
+//      with a short backoff and keep the FRESHEST snapshot (highest max
+//      timestamp, then record count). This defeats a minutes-old
+//      edge-cached copy and a list() that has not caught up with a
+//      recent write; it cannot defeat storage propagation lag — that is
+//      stated honestly below. A read that fails on every attempt throws
+//      BlobReadError before any write.
 //   2. mutate(current) -> next (pure; must be IDEMPOTENT, because a
-//      retry re-runs it on a fresher read — e.g. dedup by id/timestamp —
-//      and may throw FailRequest to abort with a domain error),
-//      or return the SAME reference to signal "already applied, nothing
-//      to write" (the read itself is then the confirmation),
-//   3. put(next) with cacheControlMaxAge: 0, so the stored object is not
-//      served from an edge cache afterwards,
-//   4. re-read with a cache-busting URL and run confirm(next, stored):
-//      the intended mutation must be present AND nothing the write
-//      contained may be missing from the re-read. A mismatch retries
-//      the whole cycle (bounded, with backoff); if no attempt confirms,
-//      throw BlobWriteError — the handler answers 503, never 200.
+//      retry after a put that threw re-runs it on a fresher read —
+//      e.g. dedup by id/timestamp — and may throw FailRequest to abort
+//      with a domain error), or the SAME reference to signal "already
+//      applied, nothing to write".
+//   3. put(next) with cacheControlMaxAge: 0. A put() that throws
+//      retries the whole cycle (bounded); if every put throws, throw
+//      BlobWriteError — the handler answers 503. A put() that succeeds
+//      IS the write: the handler answers 200 with the record as written
+//      (plus the edit token on POST) and `verified` / `pendingPropagation`.
+//   4. soft verify (best effort, never a gate): after a successful
+//      put, re-read on a bounded schedule (default offsets [0, 500,
+//      1500, 3500] ms — ~3.5 s worst case, far inside the 30 s function
+//      limit) and run confirm(next, stored). The outcome is reported as
+//      `verified` so the caller knows whether a fresh re-read has
+//      already seen the change; `verified: false` is a normal outcome
+//      under propagation lag, not an error, and the UI re-fetches later
+//      instead of assuming the write is visible yet. It NEVER turns a
+//      landed write into a 503.
 //
 // What it does NOT promise: without versioning/CAS, two writers racing
 // inside the same read window can still overwrite each other (last
-// writer wins), and a verify read can only compare against what this
-// request itself wrote. The guarantee is narrower and honest: a 200
-// means a fresh re-read showed the intended mutation and no loss
-// relative to what this request wrote; anything else is a 503.
+// writer wins), and the freshest-of-N-reads heuristic can still lose to
+// a read window where every read is stale. The guarantees are narrower
+// and honest: a 200 means put() succeeded (the record is in the store);
+// a 503 means put() itself failed or the pre-write read failed
+// outright; `verified` tells the caller whether a fresh re-read has
+// already seen the change.
 export async function readModifyWrite({
   list,
   put,
@@ -181,23 +232,63 @@ export async function readModifyWrite({
   empty,
   unavailableCode = 'blob_unavailable',
   corruptCode = 'blob_corrupt',
-  notConfirmedCode = 'blob_not_confirmed',
+  writeFailedCode = 'blob_write_failed',
   mutate,
   confirm,
   maxAttempts = 3,
   backoffMs = 150,
+  readAttempts = 3,
+  freshness = defaultFreshness,
+  verifyDelaysMs = [0, 500, 1500, 3500],
 }) {
+  const readOpts = { list, fetchImpl, token, path, validate, unavailableCode, corruptCode }
+
+  // 1. Pre-write read, repeated: keep the freshest snapshot seen.
+  // A throwing read is retried; only if every attempt fails does the
+  // error escape (fail-closed, rev 4 — no write on a failed read).
+  async function readFreshest() {
+    let best = null
+    let bestScore = null
+    let lastError = null
+    for (let i = 0; i < readAttempts; i++) {
+      if (i > 0) await sleep(backoffMs)
+      try {
+        const result = await readBlobJson({ ...readOpts, cacheBust: i > 0 })
+        const value = result.found ? result.value : empty
+        const score = freshness(value)
+        if (best === null || fresher(score, bestScore)) { best = value; bestScore = score }
+      } catch (error) {
+        lastError = error
+      }
+    }
+    if (best === null) throw lastError
+    return best
+  }
+
+  // 4. Soft verify: best effort only. A put() that returned is the
+  // success; this only reports whether the change is already visible
+  // to a fresh re-read. Delays are absolute offsets from the put.
+  async function softVerify(next) {
+    if (typeof confirm !== 'function') return true
+    for (let i = 0; i < verifyDelaysMs.length; i++) {
+      if (i > 0) await sleep(verifyDelaysMs[i] - verifyDelaysMs[i - 1])
+      try {
+        const check = await readBlobJson({ ...readOpts, cacheBust: true })
+        if (check.found && confirm(next, check.value)) return true
+      } catch {
+        // A failed verify read is "not visible yet", not a failure.
+      }
+    }
+    return false
+  }
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // A failed read aborts before any write (rev 4 guarantee).
-    const { found, value } = await readBlobJson({
-      list, fetchImpl, token, path, validate, unavailableCode, corruptCode,
-    })
-    const current = found ? value : empty
+    const current = await readFreshest()
     // FailRequest propagates immediately: invalid request, not a store
     // problem — no put(), no retry.
     const next = mutate(current)
-    if (next === current) return current
-    let putError = null
+    if (next === current) return { value: current, verified: true }
     try {
       await put(path, JSON.stringify(next), {
         access: 'private',
@@ -208,31 +299,21 @@ export async function readModifyWrite({
         cacheControlMaxAge: 0,
       })
     } catch (error) {
-      putError = error
-    }
-    if (!putError) {
-      try {
-        const check = await readBlobJson({
-          list, fetchImpl, token, path, validate, unavailableCode, corruptCode, cacheBust: true,
-        })
-        if (check.found && confirm(next, check.value)) return check.value
-      } catch {
-        // A failed verify read is "not confirmed", not a success: fall
-        // through to retry (or to the BlobWriteError below).
+      if (attempt < maxAttempts) {
+        await sleep(backoffMs * attempt)
+        continue
       }
+      throw new BlobWriteError(
+        writeFailedCode,
+        503,
+        `Blob write to ${path} failed: ${error instanceof Error ? error.message : String(error)}`,
+      )
     }
-    if (attempt < maxAttempts) {
-      await sleep(backoffMs * attempt)
-      continue
-    }
-    throw new BlobWriteError(
-      notConfirmedCode,
-      503,
-      putError
-        ? `Blob write to ${path} failed: ${putError instanceof Error ? putError.message : String(putError)}`
-        : `Blob write to ${path} could not be confirmed after ${maxAttempts} attempts: the change may not have persisted.`,
-    )
+    // put() succeeded: that IS the write. Report whether a fresh
+    // re-read has already seen it; never 503 for a landed write.
+    const verified = await softVerify(next)
+    return { value: next, verified }
   }
   // Unreachable: the loop always returns or throws.
-  throw new BlobWriteError(notConfirmedCode, 503, `Blob write to ${path} could not be confirmed.`)
+  throw new BlobWriteError(writeFailedCode, 503, `Blob write to ${path} failed.`)
 }

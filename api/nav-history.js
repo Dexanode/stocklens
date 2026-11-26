@@ -37,8 +37,8 @@ async function readHistory(token) {
   return found ? value : {}
 }
 
-// Returns the error response for a store-read failure or an
-// unconfirmed write, or null when the error is neither.
+// Returns the error response for a store-read failure or a failed
+// write (put() threw on every attempt), or null when the error is neither.
 function storeErrorResponse(response, error) {
   if (error instanceof BlobReadError || error instanceof BlobWriteError) {
     return response.status(error.status).json({ persistent: false, history: {}, error: error.message, code: error.code })
@@ -122,26 +122,29 @@ export default async function handler(request, response) {
       return response.status(400).json({ persistent: false, history: {}, error: 'No valid snapshots in request.', accepted: [], skipped: [], rejected })
     }
 
-    // Rev 6: verified write (see api/lib/blob-store.js). The snapshot
-    // timestamp is fixed once per request so a retry appends the identical
-    // point instead of a second one, and the mutate is idempotent: a
-    // point for this timestamp already present is skipped, not duplicated.
-    // A 200 means a fresh re-read showed every new point AND no symbol
-    // the write contained went missing; anything else is a 503
-    // (nav_history_store_not_confirmed), never a 200 for a snapshot that
-    // may not have persisted.
+    // Rev 7: put() succeeding IS the snapshot write (rev 6's
+    // verify-as-gate returned false 503s for writes that had landed,
+    // because Blob reads lag writes by ~10–25 s). The response carries
+    // the history as written plus a `verified` flag: a fresh re-read
+    // has (true) or has not yet (false) seen the new points.
+    // `verified: false` is a normal outcome under propagation lag.
+    // The snapshot timestamp is fixed once per request so a retry
+    // appends the identical point instead of a second one, and the
+    // mutate is idempotent: a point for this timestamp already present
+    // is skipped, not duplicated.
     const now = Date.now()
     const intended = []
     const skipped = new Set()
-    let verified
+    let written
+    let writeVerified = false
     try {
-      verified = await readModifyWrite({
+      ({ value: written, verified: writeVerified } = await readModifyWrite({
         list, put, token, path: PATH,
         validate: (payload) => payload !== null && typeof payload === 'object' && !Array.isArray(payload),
         empty: {},
         unavailableCode: 'nav_history_store_unavailable',
         corruptCode: 'nav_history_store_corrupt',
-        notConfirmedCode: 'nav_history_store_not_confirmed',
+        writeFailedCode: 'nav_history_store_write_failed',
         mutate: (existing) => {
           const history = { ...existing }
           let changed = false
@@ -170,14 +173,14 @@ export default async function handler(request, response) {
           }
           return Object.keys(written).every((symbol) => Array.isArray(stored[symbol]) && stored[symbol].length >= written[symbol].length)
         },
-      })
+      }))
     } catch (error) {
       const handled = storeErrorResponse(response, error)
       if (handled) return handled
       throw error
     }
     response.setHeader('Cache-Control', 'no-store')
-    return response.status(200).json({ persistent: true, history: verified, accepted: [...new Set(intended.map((point) => point.symbol))], skipped: [...skipped], rejected })
+    return response.status(200).json({ persistent: true, history: written, accepted: [...new Set(intended.map((point) => point.symbol))], skipped: [...skipped], rejected, verified: writeVerified, pendingPropagation: !writeVerified })
   } catch (error) {
     // Backstop: a store-read failure must never surface as 200 with an
     // empty history (the old behaviour hid the failure from callers).

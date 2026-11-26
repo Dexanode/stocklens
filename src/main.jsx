@@ -955,9 +955,11 @@ function App() {
       reviewCount: 0,
     };
     let saved = next;
+    let savedPayload = null;
     try {
       const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
       const payload = response.ok ? await response.json() : null;
+      savedPayload = payload;
       if (payload?.thesis) {
         saved = payload.thesis;
         if (payload.editToken) storeEditToken(saved.id, payload.editToken);
@@ -968,7 +970,12 @@ function App() {
     setThesisTitle("");
     setThesisNote("");
     runFollowUp(saved);
-    setNotice(`${selected} thesis disimpan di workspace ${saved.id?.startsWith("th_") ? "server-side" : "local"}. Paper-only dan bisa direview ulang kapan saja.`);
+    // Rev 7: a 200 means put() succeeded — the record IS stored — but
+    // `pendingPropagation` means a fresh re-read had not seen it yet
+    // (Blob reads lag writes ~10–25 s). Say so instead of implying it
+    // is already visible server-side.
+    const savedNote = `${selected} thesis disimpan di workspace ${saved.id?.startsWith("th_") ? "server-side" : "local"}. Paper-only dan bisa direview ulang kapan saja.`;
+    setNotice(savedPayload?.pendingPropagation ? `${savedNote} Server belum menampilkan perubahan ini — akan terkonfirmasi saat refresh.` : savedNote);
   }
 
   function updateThesisStatus(id, status) {
@@ -978,8 +985,11 @@ function App() {
     setThesisWorkspace((items) => items.map((item) => item.id === id ? next : item));
     persistThesis(next).then((result) => {
       if (result?.status === 410) setNotice(`${next.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
-      else if (result?.status === 503) setNotice(`${next.symbol} status berubah lokal, tapi server belum mengonfirmasi penyimpanannya (${result?.code || "store_unavailable"}) — coba lagi sebentar lagi, jangan tutup tab dulu.`);
-      else if (result?.thesis) setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
+      else if (result?.status === 503) setNotice(`${next.symbol} status gagal disimpan di server (${result?.code || "store_unavailable"}) — perubahan tersimpan lokal, coba lagi sebentar lagi.`);
+      else if (result?.thesis) {
+        setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
+        if (result?.pendingPropagation) setNotice(`${next.symbol} status tersimpan di server, tapi belum terkonfirmasi terlihat — akan terkonfirmasi saat refresh.`);
+      }
     });
     recordThesisEvent(next.id, next.symbol, `STATUS → ${status}`, `Thesis status changed from the workspace.`);
   }
@@ -988,13 +998,15 @@ function App() {
     if (!item?.id?.startsWith("th_")) return { status: 0 };
     try {
       const response = await fetch("/api/thesis", { method: "PUT", headers: { "Content-Type": "application/json", "x-edit-token": editTokenFor(item.id) }, body: JSON.stringify(item) });
-      // Rev 6: return the whole result. On success the body carries the
-      // record as the server confirmed it — callers adopt it as the
-      // source of truth instead of assuming the local copy persisted.
-      // On an unconfirmed write (503 thesis_store_not_confirmed) the
-      // change is local-only and the caller must say so.
+      // Rev 7: return the whole result. On success (200) the body
+      // carries the record as written — a successful put() IS the write
+      // — plus `verified` / `pendingPropagation`: whether a fresh
+      // re-read has already seen it. `pendingPropagation` is a normal
+      // outcome under Blob read lag, not a failure; callers adopt the
+      // record and say it will confirm on refresh. A 503 now means a
+      // real failure (put() threw, or the pre-write read failed).
       const payload = await response.json().catch(() => null);
-      return { status: response.status, thesis: payload?.thesis || null, code: payload?.code || null, error: payload?.error || null };
+      return { status: response.status, thesis: payload?.thesis || null, code: payload?.code || null, error: payload?.error || null, verified: payload?.verified ?? null, pendingPropagation: payload?.pendingPropagation || false };
     } catch { /* local state remains available */ return { status: 0 }; }
   }
 
@@ -1024,8 +1036,11 @@ function App() {
     setThesisWorkspace((items) => items.map((entry) => entry.id === id ? next : entry));
     persistThesis(next).then((result) => {
       if (result?.status === 410) setNotice(`${item.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
-      else if (result?.status === 503) setNotice(`${item.symbol} review tersimpan lokal, tapi server belum mengonfirmasi penyimpanannya (${result?.code || "store_unavailable"}) — coba lagi sebentar lagi, jangan tutup tab dulu.`);
-      else if (result?.thesis) setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
+      else if (result?.status === 503) setNotice(`${item.symbol} review gagal disimpan di server (${result?.code || "store_unavailable"}) — perubahan tersimpan lokal, coba lagi sebentar lagi.`);
+      else if (result?.thesis) {
+        setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
+        if (result?.pendingPropagation) setNotice(`${item.symbol} review tersimpan di server, tapi belum terkonfirmasi terlihat — akan terkonfirmasi saat refresh.`);
+      }
     });
     runFollowUp(next);
     recordThesisEvent(next.id, next.symbol, "OUTCOME REVIEWED", "NAV snapshot and agent follow-up refreshed.");
@@ -1065,15 +1080,15 @@ function App() {
   }
 
   async function shareThesis(item) {
-    // Rev 6: never put an unverified id in a share link. resolveShareId
-    // (src/thesis-share.js) checks the id exists server-side first — a
-    // workspace copy can hold an id whose record was lost pre-rev-6, and
-    // a link to a missing record 404s for every recipient. On 404 it
-    // re-creates the thesis and returns the fresh server id; when the
-    // server is unreachable it returns "" and we fall back to the
-    // ?thesis= JSON link, which always works. saveThesis already adopts
-    // the server id from the POST response, so a freshly saved thesis
-    // links correctly; this covers the local-only and orphan-id paths.
+    // Rev 7: never put an unverified id in a share link. resolveShareId
+    // (src/thesis-share.js) GET-verifies the id with retries first — a
+    // single 404 proves nothing while Blob reads lag writes ~10–25 s —
+    // then checks the list for a content match before re-creating, so a
+    // stale verify can no longer mint a duplicate. When the server is
+    // unreachable it returns "" and we fall back to the ?thesis= JSON
+    // link, which always works. saveThesis already adopts the server id
+    // from the POST response, so a freshly saved thesis links correctly;
+    // this covers the local-only and orphan-id paths.
     const resolved = await resolveShareId(item, fetch);
     const serverId = resolved.serverId;
     if (resolved.thesis) {
