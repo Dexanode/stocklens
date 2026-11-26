@@ -263,10 +263,16 @@ function chartRangeLabels(range) {
   }[range] || ["START", "MID", "NOW"];
 }
 
+function chartTimeX(timestamp, range) {
+  const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+  const duration = (days[range] || 30) * 864e5;
+  return 4 + 720 * Math.max(0, Math.min(1, (Number(timestamp) - (Date.now() - duration)) / duration));
+}
+
 function pointsFromSnapshots(history = [], range) {
   const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
   const cutoff = Date.now() - (days[range] || 30) * 864e5;
-  const rows = history.filter((row) => Number(row.timestamp) >= cutoff).slice(-260);
+  const rows = history.filter((row) => Number(row.timestamp) >= cutoff && Number.isFinite(Number(row.price)) && Number(row.price) > 0).sort((a, b) => Number(a.timestamp) - Number(b.timestamp)).slice(-260);
   // Two observations only create a misleading straight-line/V-shape.
   // Wait for a third point before presenting a trend as a chart.
   if (rows.length < 3) return "";
@@ -277,21 +283,20 @@ function pointsFromSnapshots(history = [], range) {
   const padding = Math.max((high - low) * 0.1, high * 0.001, 0.01);
   const bottom = low - padding;
   const scale = high + padding - bottom;
-  return values.map((value, index) => `${4 + (index * 720) / Math.max(values.length - 1, 1)},${90 - ((value - bottom) / scale) * 90}`).join(" ");
+  return rows.map((row) => `${chartTimeX(row.timestamp, range)},${90 - ((Number(row.price) - bottom) / scale) * 90}`).join(" ");
 }
 
-function CandleChart({ candles, color }) {
+function CandleChart({ candles, color, range }) {
   const low = Math.min(...candles.map((candle) => candle.low));
   const high = Math.max(...candles.map((candle) => candle.high));
   const padding = Math.max((high - low) * 0.1, high * 0.001, 0.01);
   const bottom = low - padding;
   const scale = high + padding - bottom;
   const y = (value) => 90 - ((value - bottom) / scale) * 90;
-  const step = 720 / Math.max(candles.length - 1, 1);
   return (
     <g>
       {candles.map((candle, index) => {
-        const x = candles.length === 1 ? 718 : 4 + index * step;
+        const x = Math.max(8, Math.min(720, chartTimeX(candle.timestamp, range)));
         const openY = y(candle.open);
         const closeY = y(candle.close);
         const top = Math.min(openY, closeY);
@@ -1387,12 +1392,12 @@ function App() {
                   role="img"
                   aria-label={`${chartType} chart for ${selected} over ${range}`}
                 >
-                  {chartType === "candles" && chartCandles.length ? (
-                    <CandleChart candles={chartCandles} color={asset.color} />
-                  ) : chartPoints ? (
+                  {chartType === "candles" && chartCandles.length >= 2 ? (
+                    <CandleChart candles={chartCandles} color={asset.color} range={range} />
+                  ) : chartType !== "candles" && chartPoints ? (
                     <>
                       <polyline
-                        points={`4,90 ${chartPoints} 724,90`}
+                        points={`${chartPoints.split(" ")[0].split(",")[0]},90 ${chartPoints} ${chartPoints.split(" ").at(-1).split(",")[0]},90`}
                         fill={chartType === "area" ? "#edf2ff" : "none"}
                       />
                       <polyline
@@ -1405,7 +1410,15 @@ function App() {
                     </>
                   ) : null}
                 </svg>
-                {!chartPoints && !chartCandles.length && (
+                {chartType === "candles" && chartCandles.length < 2 && (
+                  <div className="chart-empty" role="status" aria-live="polite">
+                    <strong>Collecting daily NAV history</strong>
+                    <span>{chartCandles.length} daily candle available</span>
+                    <small>At least 2 days of NAV observations are needed to display a candle chart.</small>
+                    <small>Switch to Line to view the available snapshots.</small>
+                  </div>
+                )}
+                {chartType !== "candles" && !chartPoints && (
                   <div className="chart-empty" role="status" aria-live="polite">
                     <div className="chart-empty-mark" aria-hidden="true"><i /><i /><i /><i /><i /></div>
                     <strong>{chartHistoryMeta.count < 3 ? "COLLECTING NAV HISTORY" : "HISTORY RANGE UNAVAILABLE"}</strong>
