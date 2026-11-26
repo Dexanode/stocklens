@@ -1,17 +1,35 @@
 import { list, put } from '@vercel/blob'
 import { blobPath } from './lib/storage.js'
+import { readBlobJson, BlobReadError } from './lib/blob-store.js'
 
 const PATH = blobPath('stocklens/theses.json')
 const MAX_ITEMS = 500
 
+// Rev 4: readTheses either returns the stored array (or [] when the file
+// genuinely does not exist yet) or THROWS BlobReadError. It never silently
+// returns [] for a failed fetch, a non-2xx response, broken JSON, or a
+// non-array payload — those used to be swallowed, so the next POST/PUT
+// rewrote the file from [] and wiped every stored thesis. The handler
+// answers a BlobReadError with an error status BEFORE any put() is called.
 async function readTheses(token) {
-  const result = await list({ prefix: PATH, token })
-  const blob = result.blobs.find((item) => item.pathname === PATH)
-  if (!blob) return []
-  const response = await fetch(blob.url, { headers: { Authorization: `Bearer ${token}` } })
-  if (!response.ok) return []
-  const payload = await response.json()
-  return Array.isArray(payload) ? payload : []
+  const { found, value } = await readBlobJson({
+    list,
+    token,
+    path: PATH,
+    validate: Array.isArray,
+    unavailableCode: 'thesis_store_unavailable',
+    corruptCode: 'thesis_store_corrupt',
+  })
+  return found ? value : []
+}
+
+// Returns the error response for a store-read failure, or null when the
+// error is not a BlobReadError (the outer catch then handles it).
+function storeErrorResponse(response, error) {
+  if (error instanceof BlobReadError) {
+    return response.status(error.status).json({ persistent: false, error: error.message, code: error.code })
+  }
+  return null
 }
 
 function clean(value, max = 500) {
@@ -71,7 +89,17 @@ export default async function handler(request, response) {
   const token = process.env.BLOB_READ_WRITE_TOKEN
   if (!token) return response.status(503).json({ persistent: false, error: 'BLOB_READ_WRITE_TOKEN is not configured.' })
   try {
-    const theses = await readTheses(token)
+    // A failed read must fail the request, not silently become an empty
+    // store: writing after this point would overwrite the stored file
+    // with whatever the (empty) in-memory list holds. Rev 4.
+    let theses
+    try {
+      theses = await readTheses(token)
+    } catch (error) {
+      const handled = storeErrorResponse(response, error)
+      if (handled) return handled
+      throw error
+    }
     if (request.method === 'GET') {
       const id = clean(request.query?.id, 100)
       const thesis = theses.find((item) => item.id === id)

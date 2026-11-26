@@ -1,6 +1,7 @@
 import { list, put } from '@vercel/blob'
 import { fetchLiveNav } from './lib/coinbase.js'
 import { blobPath } from './lib/storage.js'
+import { readBlobJson, BlobReadError } from './lib/blob-store.js'
 
 // Namespaced per environment (see api/lib/storage.js): production keeps
 // stocklens/nav-history.json; preview/development write under
@@ -18,13 +19,31 @@ const ALLOWED_SYMBOLS = new Set([
 ])
 const MAX_SYMBOLS_PER_REQUEST = 24
 
+// Rev 4: same fail-closed rule as api/thesis.js (see api/lib/blob-store.js).
+// The old reader returned {} for ANY read problem, so a POST after a
+// transient Blob failure rewrote the history file from {} and wiped every
+// stored point. Now only a genuinely missing file is {}; a failed fetch,
+// a non-2xx response, broken JSON, or a non-object payload throws
+// BlobReadError and the handler answers with an error BEFORE any put().
 async function readHistory(token) {
-  const result = await list({ prefix: PATH, token })
-  const blob = result.blobs.find((item) => item.pathname === PATH)
-  if (!blob) return {}
-  const response = await fetch(blob.url, { headers: { Authorization: `Bearer ${token}` } })
-  if (!response.ok) return {}
-  return await response.json()
+  const { found, value } = await readBlobJson({
+    list,
+    token,
+    path: PATH,
+    validate: (payload) => payload !== null && typeof payload === 'object' && !Array.isArray(payload),
+    unavailableCode: 'nav_history_store_unavailable',
+    corruptCode: 'nav_history_store_corrupt',
+  })
+  return found ? value : {}
+}
+
+// Returns the error response for a store-read failure, or null when the
+// error is not a BlobReadError.
+function storeErrorResponse(response, error) {
+  if (error instanceof BlobReadError) {
+    return response.status(error.status).json({ persistent: false, history: {}, error: error.message, code: error.code })
+  }
+  return null
 }
 
 function parseBody(request) {
@@ -45,7 +64,14 @@ export default async function handler(request, response) {
   if (!token) return response.status(200).json({ persistent: false, history: {}, warning: 'BLOB_READ_WRITE_TOKEN is not configured.' })
   try {
     if (request.method === 'GET') {
-      const history = await readHistory(token)
+      let history
+      try {
+        history = await readHistory(token)
+      } catch (error) {
+        const handled = storeErrorResponse(response, error)
+        if (handled) return handled
+        throw error
+      }
       response.setHeader('Cache-Control', 'no-store')
       return response.status(200).json({ persistent: true, history })
     }
@@ -84,7 +110,17 @@ export default async function handler(request, response) {
       return response.status(503).json({ persistent: false, history: {}, error: 'Live NAV reference unavailable; snapshot rejected, nothing was written.' })
     }
 
-    const existing = await readHistory(token)
+    // A failed read must fail the request, not silently become an empty
+    // history: the put() below would then overwrite the stored file with
+    // only the new points and wipe all previous history. Rev 4.
+    let existing
+    try {
+      existing = await readHistory(token)
+    } catch (error) {
+      const handled = storeErrorResponse(response, error)
+      if (handled) return handled
+      throw error
+    }
     const now = Date.now()
     const history = { ...existing }
     const accepted = []
@@ -114,6 +150,11 @@ export default async function handler(request, response) {
     response.setHeader('Cache-Control', 'no-store')
     return response.status(200).json({ persistent: true, history, accepted, skipped, rejected })
   } catch (error) {
+    // Backstop: a store-read failure must never surface as 200 with an
+    // empty history (the old behaviour hid the failure from callers).
+    if (error instanceof BlobReadError) {
+      return response.status(error.status).json({ persistent: false, history: {}, error: error.message, code: error.code })
+    }
     return response.status(200).json({ persistent: false, history: {}, warning: error instanceof Error ? error.message : 'Persistent history unavailable' })
   }
 }
