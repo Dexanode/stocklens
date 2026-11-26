@@ -1,3 +1,11 @@
+import { isBlockedCountry } from './lib/geo.js'
+import { checkRateLimit } from './lib/rate-limit.js'
+
+// Best-effort per-IP limit (in-memory, per serverless instance — see
+// api/lib/rate-limit.js). 10 req/min/IP: the Portfolio Agent is a heavy
+// call, so it gets the tightest budget (audit C-2).
+const RATE_LIMIT = { limit: 10, windowMs: 60_000, keyPrefix: 'portfolio' }
+
 function fallbackPlan(universe, holdings) {
   const usable = universe.filter((asset) => asset.price !== '—' && asset.dataQuality?.nav !== false)
   const weights = usable.map((asset) => Math.max(1, Number(asset.score || 0)))
@@ -42,7 +50,16 @@ function parseModelJson(content) {
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed' })
-  if (String(request.headers['x-stocklens-country'] || '').toUpperCase() === 'US') return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
+  // Geo-block enforced from the Vercel IP header, not the self-declared
+  // client header (audit C-3). See api/lib/geo.js.
+  if (isBlockedCountry(request).blocked) return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
+  const rate = checkRateLimit(request, RATE_LIMIT)
+  response.setHeader('X-RateLimit-Remaining', String(Math.max(0, rate.remaining)))
+  response.setHeader('X-RateLimit-Reset', String(Math.ceil(rate.resetAt / 1000)))
+  if (rate.limited) {
+    response.setHeader('Retry-After', String(rate.retryAfterSeconds))
+    return response.status(429).json({ error: 'Rate limit exceeded. Try again shortly.', retryAfterSeconds: rate.retryAfterSeconds })
+  }
   if (!process.env.VIKEY_API_KEY) return response.status(503).json({ error: 'Vikey is not configured yet. Add VIKEY_API_KEY in Vercel.' })
 
   let safeUniverse = []
@@ -53,6 +70,12 @@ export default async function handler(request, response) {
     const holdings = Array.isArray(input?.holdings) ? input.holdings.slice(0, 12) : []
     if (!universe.length) return response.status(400).json({ error: 'Portfolio payload requires a B20 asset universe' })
 
+    // Only history *statistics* go to Vikey — historyCount, historyChangePct,
+    // volatilityPct — never the raw NAV points. The frontend sends up to 260
+    // points per asset, but they are reduced here before the upstream call,
+    // so Vikey tokens stay proportional to the universe size, not its history
+    // depth. (This corrects audit note L-10: the payload was already
+    // stats-only; the remaining token cut is max_tokens below.)
     const compactUniverse = universe.map((asset) => ({
       symbol: String(asset.symbol || '').slice(0, 24),
       name: String(asset.name || asset.symbol || '').slice(0, 80),
@@ -83,7 +106,11 @@ export default async function handler(request, response) {
       headers: { Authorization: `Bearer ${process.env.VIKEY_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'vikey/plan',
-        max_tokens: 2400 + 300 * compactUniverse.length,
+        // Was 2400 + 300/asset (up to 9,600 tokens per call). The expected
+        // output is small — one allocation line per asset plus a summary —
+        // so 1800 + 100/asset (max 4,200 at 24 assets) is ample and caps
+        // the per-call key spend (audit C-2).
+        max_tokens: 1800 + 100 * compactUniverse.length,
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -94,6 +121,9 @@ export default async function handler(request, response) {
           { role: 'user', content: JSON.stringify({ universe: compactUniverse, currentPaperHoldings: compactHoldings }) },
         ],
       }),
+      // Bound the upstream call so a slow Vikey cannot hang the function
+      // into a Vercel timeout (audit C-2).
+      signal: AbortSignal.timeout(8000),
     })
     if (!upstream.ok) {
       const detail = await upstream.text()
@@ -118,6 +148,10 @@ export default async function handler(request, response) {
     }))
     response.status(200).json({ ...result, allocations: normalizedAllocations, confidence, source: 'Vikey Portfolio Agent', paperOnly: true, fallback: false })
   } catch (error) {
+    // If validation never produced a universe (empty/malformed payload), do
+    // not answer with an empty 200 "plan" — that bypassed the 400 above
+    // (audit M-10).
+    if (!safeUniverse.length) return response.status(400).json({ error: 'Portfolio payload requires a B20 asset universe' })
     response.status(200).json(fallbackPlan(safeUniverse, safeHoldings))
   }
 }

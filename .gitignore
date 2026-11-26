@@ -1,0 +1,14 @@
+# Secrets — never commit real values. See .env.example for the variable names.
+.env*
+!.env.example
+
+# Dependencies and build output
+node_modules/
+dist/
+
+# Vercel local state
+.vercel
+
+# Logs and editor files
+*.log
+.DS_Store
