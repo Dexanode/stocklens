@@ -169,8 +169,19 @@ function numericPrice(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
 
-function SharedThesisPage({ thesis, onExit }) {
-  const change = Number.isFinite(Number(thesis.changeSinceEntry)) ? Number(thesis.changeSinceEntry) : null;
+function SharedThesisPage({ thesis, marketAssets, onExit }) {
+  const [copyStatus, setCopyStatus] = useState("");
+  const entry = numericPrice(thesis.entryPriceValue ?? thesis.entryPrice);
+  const current = numericPrice(marketAssets[thesis.symbol]?.price);
+  const change = entry && current ? ((current - entry) / entry) * 100 : null;
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setCopyStatus("Link copied");
+    } catch {
+      setCopyStatus("Copy the link from your browser address bar.");
+    }
+  }
   return (
     <div className="shared-thesis-page">
       <header className="shared-thesis-topbar"><a className="shared-thesis-brand" href="/">STOCK<span>LENS</span></a><span>SHARED RESEARCH / PAPER ONLY</span></header>
@@ -179,10 +190,10 @@ function SharedThesisPage({ thesis, onExit }) {
         <div className="shared-thesis-heading"><div><h1>{thesis.title}</h1><p>{thesis.symbol} · {thesis.assetName || "Tokenized equity"} · Base B20</p></div><span className={`workspace-status ${(thesis.status || "OPEN").toLowerCase()}`}>{thesis.status || "OPEN"}</span></div>
         <div className="shared-thesis-grid">
           <section className="shared-thesis-card shared-thesis-note"><span>THESIS</span><p>{thesis.note}</p><div className="shared-thesis-meta"><span>CREATED <b>{new Date(thesis.createdAt).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" })}</b></span><span>MODEL <b>{thesis.source || "StockLens baseline"}</b></span></div></section>
-          <section className="shared-thesis-card"><span>OUTCOME SNAPSHOT</span><strong className={change === null ? "" : change >= 0 ? "up" : "down"}>{change === null ? "NAV PENDING" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><div className="shared-thesis-metrics"><span>ENTRY <b>{thesis.entryPrice || "—"}</b></span><span>CURRENT <b>{thesis.currentPrice || "—"}</b></span><span>SCORE <b>{thesis.score ?? "—"}/100</b></span><span>CONVICTION <b>{thesis.conviction ?? "—"}/5</b></span><span>TARGET <b>{thesis.target === null || thesis.target === undefined ? "—" : `${thesis.target}%`}</b></span><span>REVIEWED <b>{thesis.reviewedAt ? new Date(thesis.reviewedAt).toLocaleDateString([], { day: "2-digit", month: "short" }) : "Not yet"}</b></span></div></section>
+          <section className="shared-thesis-card"><span>OUTCOME SINCE ENTRY / LIVE NAV</span><strong className={change === null ? "" : change >= 0 ? "up" : "down"}>{change === null ? "NAV PENDING" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><div className="shared-thesis-metrics"><span>ENTRY <b>{thesis.entryPrice || "—"}</b></span><span>CURRENT <b>{current ? formatUSD(current) : "—"}</b></span><span>SCORE <b>{thesis.score ?? "—"}/100</b></span><span>CONVICTION <b>{thesis.conviction ?? "—"}/5</b></span><span>TARGET <b>{thesis.target === null || thesis.target === undefined ? "—" : `${thesis.target}%`}</b></span><span>REVIEWED <b>{(thesis.lastReviewedAt || thesis.reviewedAt) ? new Date(thesis.lastReviewedAt || thesis.reviewedAt).toLocaleDateString([], { day: "2-digit", month: "short" }) : "Not yet"}</b></span></div></section>
         </div>
         <div className="shared-thesis-proof"><span>DATA CONTEXT</span><b>B20 NAV / BASE MAINNET 8453</b><b>PAPER REGISTRY / BASE SEPOLIA 84532</b><small>Shared snapshot. This page does not execute trades, custody funds, or provide financial advice.</small></div>
-        <div className="shared-thesis-actions"><button type="button" onClick={() => navigator.clipboard?.writeText(window.location.href)}>COPY LINK ↗</button><button type="button" onClick={onExit}>OPEN STOCKLENS TERMINAL ↗</button></div>
+        <div className="shared-thesis-actions"><button type="button" onClick={copyLink}>COPY LINK ↗</button><button type="button" onClick={onExit}>OPEN STOCKLENS TERMINAL ↗</button><span role="status">{copyStatus}</span></div>
       </main>
     </div>
   );
@@ -405,6 +416,7 @@ function App() {
   const [portfolioAgentLoading, setPortfolioAgentLoading] = useState(false);
   const [portfolioAgentError, setPortfolioAgentError] = useState("");
   const [expandedRebalance, setExpandedRebalance] = useState(null);
+  const [shareLink, setShareLink] = useState(null);
   const [thesisHistory, setThesisHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
@@ -1002,12 +1014,13 @@ function App() {
       assetName: marketAssets[item.symbol]?.name || item.symbol,
       currentPrice: outcome.current ? `$${outcome.current.toFixed(2)}` : "—",
       changeSinceEntry: outcome.change,
-      reviewedAt: item.lastReviewedAt || new Date().toISOString(),
+      reviewedAt: item.lastReviewedAt || null,
       sharedAt: new Date().toISOString(),
     };
     const url = serverId
       ? `${window.location.origin}${window.location.pathname}?thesisId=${encodeURIComponent(serverId)}`
       : `${window.location.origin}${window.location.pathname}?thesis=${encodeURIComponent(JSON.stringify(payload))}`;
+    setShareLink({ id: serverId || item.id, url });
     const copied = navigator.clipboard?.writeText(url);
     if (copied) copied.then(() => setNotice(`${item.symbol} shareable thesis link copied.`)).catch(() => setNotice("Link siap dibuat, tapi browser menolak akses clipboard."));
     else setNotice("Link siap dibuat, tapi browser tidak menyediakan clipboard.");
@@ -1035,7 +1048,7 @@ function App() {
     return <div className="shared-thesis-loading">READING SERVER-SIDE THESIS…</div>;
   }
   if (sharedThesis) {
-    return <SharedThesisPage thesis={sharedThesis} onExit={() => { window.history.replaceState({}, "", window.location.pathname); setSharedThesis(null); }} />;
+    return <SharedThesisPage thesis={sharedThesis} marketAssets={marketAssets} onExit={() => { window.history.replaceState({}, "", window.location.pathname); setSelected(sharedThesis.symbol); setSharedThesis(null); window.setTimeout(() => document.getElementById("watchlist")?.scrollIntoView({ behavior: "smooth" }), 0); }} />;
   }
 
   const pick = (symbol) => {
@@ -1651,7 +1664,8 @@ function App() {
                         <div className="workspace-outcome"><span>OUTCOME SINCE ENTRY</span><strong className={outcome.change === null ? "" : outcome.change >= 0 ? "up" : "down"}>{outcome.change === null ? "NAV PENDING" : `${outcome.change >= 0 ? "+" : ""}${outcome.change.toFixed(2)}%`}</strong><small>{outcome.current === null ? "Awaiting current NAV" : `Entry ${outcome.entry.toFixed(2)} → Now ${outcome.current.toFixed(2)}`}</small></div>
                         <div className="workspace-metrics"><span>SCORE <b>{item.score}/100</b></span><span>CONVICTION <b>{item.conviction}/5</b></span><span>TARGET <b>{item.target === null ? "—" : `${item.target}%`}</b></span><span>REVIEWS <b>{item.reviewCount || 0}</b></span></div>
                         <div className="workspace-followup"><div><span>AGENT FOLLOW-UP</span><b>{followUpLoading[item.id] ? "CHECKING MARKET CONTEXT…" : followUps[item.id]?.nextAction || "Waiting for market context"}</b></div>{followUps[item.id] && <><small>{followUps[item.id].reviewWindow} · Confidence {followUps[item.id].confidence}/100</small><div className="followup-triggers">{followUps[item.id].triggers.map((trigger) => <em key={trigger}>{trigger}</em>)}</div></>}<button type="button" onClick={() => runFollowUp(item)}>{followUpLoading[item.id] ? "RUNNING…" : "RUN FOLLOW-UP ↗"}</button></div>
-                        <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); setNotice(`${item.symbol} thesis dibuka kembali di research terminal.`); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button><select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
+                        <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); document.getElementById("watchlist")?.scrollIntoView({ behavior: "smooth" }); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button><select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
+                        {shareLink?.id === item.id && <p role="status">Share link ready: <a href={shareLink.url} target="_blank" rel="noreferrer">Open shared thesis ↗</a> <input aria-label="Shareable thesis link" value={shareLink.url} readOnly onFocus={(event) => event.target.select()} /></p>}
                       </article>;
                     })}
                   </div>
