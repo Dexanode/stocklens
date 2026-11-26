@@ -77,6 +77,7 @@ function withCacheBust(url) {
 
 export async function readBlobJson({
   list,
+  getImpl,
   fetchImpl = fetch,
   token,
   path,
@@ -98,6 +99,28 @@ export async function readBlobJson({
   const blobs = Array.isArray(result?.blobs) ? result.blobs : []
   const blob = blobs.find((item) => item?.pathname === path)
   if (!blob) return { found: false, value: null }
+
+  if (getImpl) {
+    let result
+    try {
+      result = await getImpl(path, { access: 'private', token, useCache: false })
+    } catch (error) {
+      throw new BlobReadError(unavailableCode, 503, `Blob read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
+    }
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      throw new BlobReadError(unavailableCode, 503, `Listed blob could not be read for ${path}.`)
+    }
+    let payload
+    try {
+      payload = JSON.parse(await new Response(result.stream).text())
+    } catch {
+      throw new BlobReadError(corruptCode, 500, `Blob content for ${path} is not valid JSON.`)
+    }
+    if (validate && !validate(payload)) {
+      throw new BlobReadError(corruptCode, 500, `Blob content for ${path} failed shape validation.`)
+    }
+    return { found: true, value: payload, etag: result.blob?.etag || null }
+  }
 
   let response
   try {
@@ -224,6 +247,7 @@ function fresher(a, b) {
 // already seen the change.
 export async function readModifyWrite({
   list,
+  getImpl,
   put,
   fetchImpl = fetch,
   token,
@@ -241,7 +265,7 @@ export async function readModifyWrite({
   freshness = defaultFreshness,
   verifyDelaysMs = [0, 500, 1500, 3500],
 }) {
-  const readOpts = { list, fetchImpl, token, path, validate, unavailableCode, corruptCode }
+  const readOpts = { list, getImpl, fetchImpl, token, path, validate, unavailableCode, corruptCode }
 
   // 1. Pre-write read, repeated: keep the freshest snapshot seen.
   // A throwing read is retried; only if every attempt fails does the

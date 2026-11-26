@@ -2,6 +2,19 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readBlobJson, readModifyWrite } from '../api/lib/blob-store.js'
 
+test('SDK read uses the Blob metadata ETag from the same uncached content', async () => {
+  const result = await readBlobJson({
+    path: 'test', token: 'test',
+    list: async () => ({ blobs: [{ pathname: 'test', url: 'https://example.test/blob' }] }),
+    getImpl: async (_path, options) => {
+      assert.equal(options.useCache, false)
+      return { statusCode: 200, stream: new Response('[1,2]').body, blob: { etag: 'blob-version' }, headers: new Headers({ etag: 'different-cdn-etag' }) }
+    },
+    validate: Array.isArray,
+  })
+  assert.deepEqual(result, { found: true, value: [1, 2], etag: 'blob-version' })
+})
+
 test('a listed blob returning 404 cannot be treated as empty', async () => {
   await assert.rejects(readBlobJson({
     path: 'test', token: 'test',

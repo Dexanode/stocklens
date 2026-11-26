@@ -1,4 +1,4 @@
-import { list, put } from '@vercel/blob'
+import { list, get, put } from '@vercel/blob'
 import { fetchLiveNav } from './lib/coinbase.js'
 import { blobPath } from './lib/storage.js'
 import { readBlobJson, readModifyWrite, BlobReadError, BlobWriteError } from './lib/blob-store.js'
@@ -27,7 +27,7 @@ const MAX_SYMBOLS_PER_REQUEST = 24
 // BlobReadError and the handler answers with an error BEFORE any put().
 async function readHistory(token) {
   const { found, value } = await readBlobJson({
-    list,
+    list, getImpl: get,
     token,
     path: PATH,
     validate: (payload) => payload !== null && typeof payload === 'object' && !Array.isArray(payload),
@@ -139,7 +139,7 @@ export default async function handler(request, response) {
     let writeVerified = false
     try {
       ({ value: written, verified: writeVerified } = await readModifyWrite({
-        list, put, token, path: PATH,
+      list, getImpl: get, put, token, path: PATH,
         validate: (payload) => payload !== null && typeof payload === 'object' && !Array.isArray(payload),
         empty: {},
         unavailableCode: 'nav_history_store_unavailable',
