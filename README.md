@@ -39,11 +39,6 @@ Optional reliability setting for the history proxy:
 BASE_SEPOLIA_RPC_URL=https://your-sepolia-rpc.example
 ```
 
-Optional:
-
-```text
-```
-
 `VITE_WALLETCONNECT_PROJECT_ID` must be a real 32-character WalletConnect project ID. The UI disables the modal fallback when it is not configured.
 ```
 
