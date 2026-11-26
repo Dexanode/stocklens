@@ -1373,7 +1373,7 @@ function App() {
               </div>
               <div className="chart">
                 <div className="chart-y">
-                  {chartYLabels.map((label) => <span key={label}>{label}</span>)}
+                  {chartYLabels.map((label, index) => <span key={index}>{label}</span>)}
                 </div>
                 <svg
                   viewBox="0 0 728 90"
