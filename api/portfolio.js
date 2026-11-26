@@ -83,7 +83,7 @@ export default async function handler(request, response) {
       headers: { Authorization: `Bearer ${process.env.VIKEY_API_KEY}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'vikey/plan',
-        max_tokens: 1100,
+        max_tokens: 2400,
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
