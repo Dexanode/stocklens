@@ -274,20 +274,24 @@ function pointsFromSnapshots(history = [], range) {
   if (values.length < 2) return "";
   const low = Math.min(...values);
   const high = Math.max(...values);
-  const scale = Math.max(high - low, high * 0.001, 0.01);
-  return values.map((value, index) => `${4 + (index * 720) / Math.max(values.length - 1, 1)},${84 - ((value - low) / scale) * 74}`).join(" ");
+  const padding = Math.max((high - low) * 0.1, high * 0.001, 0.01);
+  const bottom = low - padding;
+  const scale = high + padding - bottom;
+  return values.map((value, index) => `${4 + (index * 720) / Math.max(values.length - 1, 1)},${90 - ((value - bottom) / scale) * 90}`).join(" ");
 }
 
 function CandleChart({ candles, color }) {
   const low = Math.min(...candles.map((candle) => candle.low));
   const high = Math.max(...candles.map((candle) => candle.high));
-  const scale = Math.max(high - low, 0.01);
-  const y = (value) => 84 - ((value - low) / scale) * 74;
+  const padding = Math.max((high - low) * 0.1, high * 0.001, 0.01);
+  const bottom = low - padding;
+  const scale = high + padding - bottom;
+  const y = (value) => 90 - ((value - bottom) / scale) * 90;
   const step = 720 / Math.max(candles.length - 1, 1);
   return (
     <g>
       {candles.map((candle, index) => {
-        const x = 4 + index * step;
+        const x = candles.length === 1 ? 718 : 4 + index * step;
         const openY = y(candle.open);
         const closeY = y(candle.close);
         const top = Math.min(openY, closeY);
@@ -499,8 +503,10 @@ function App() {
     const source = values.length ? values : Number.isFinite(fallbackPrice) ? [fallbackPrice] : [0];
     const low = Math.min(...source);
     const high = Math.max(...source);
-    const span = Math.max(high - low, high * 0.02, 0.01);
-    return [high + span * 0.08, high + span * 0.02, low + span * 0.02, Math.max(0, low - span * 0.04)].map(formatUSD);
+    const padding = Math.max((high - low) * 0.1, high * 0.001, 0.01);
+    const top = high + padding;
+    const bottom = low - padding;
+    return [0, 1, 2, 3].map((index) => formatUSD(top - ((top - bottom) * index) / 3));
   }, [asset.navHistory, asset.price, range]);
   const insight = riskInsights[selected] || {
     confidence: 35,
@@ -1373,7 +1379,7 @@ function App() {
               </div>
               <div className="chart">
                 <div className="chart-y">
-                  {chartYLabels.map((label) => <span key={label}>{label}</span>)}
+                  {chartYLabels.map((label, index) => <span key={index}>{label}</span>)}
                 </div>
                 <svg
                   viewBox="0 0 728 90"
@@ -1420,7 +1426,7 @@ function App() {
                     style={{ background: asset.color }}
                   />{" "}
                   {chartType === "candles"
-                    ? chartCandles.length ? "OHLC / NAV-derived candles" : "OHLC / awaiting NAV history"
+                    ? chartCandles.length === 1 ? "1 daily candle / more days needed" : chartCandles.length ? "Daily OHLC / NAV snapshots" : "OHLC / awaiting NAV history"
                     : "B20 NAV reference"}
                 </span>
                 <span>
