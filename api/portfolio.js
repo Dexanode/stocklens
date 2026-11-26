@@ -107,10 +107,14 @@ export default async function handler(request, response) {
       body: JSON.stringify({
         model: 'vikey/plan',
         // Was 2400 + 300/asset (up to 9,600 tokens per call). The expected
-        // output is small — one allocation line per asset plus a summary —
-        // so 1800 + 100/asset (max 4,200 at 24 assets) is ample and caps
-        // the per-call key spend (audit C-2).
-        max_tokens: 1800 + 100 * compactUniverse.length,
+        // output is one allocation line per asset plus a summary, but a
+        // 13-asset run took ~13s and only succeeded once the response
+        // budget was raised, so the first PR's 1800 + 100/asset cap
+        // (3,100 tokens at 13 assets) risked truncated JSON -> fallback.
+        // 2400 + 200/asset (5,000 at 13 assets, max 7,200 at 24) keeps a
+        // real cut versus the original while leaving headroom. Per-call
+        // spend stays bounded by the 10 req/min/IP rate limit (audit C-2).
+        max_tokens: 2400 + 200 * compactUniverse.length,
         temperature: 0.2,
         response_format: { type: 'json_object' },
         messages: [
@@ -122,8 +126,14 @@ export default async function handler(request, response) {
         ],
       }),
       // Bound the upstream call so a slow Vikey cannot hang the function
-      // into a Vercel timeout (audit C-2).
-      signal: AbortSignal.timeout(8000),
+      // into a Vercel timeout (audit C-2). 25s, not 8s: a 13-asset run
+      // took ~13s end-to-end, so the original 8s cap would have forced
+      // the deterministic fallback on most real runs. vercel.json allows
+      // 30s for this route, so 25s leaves room for parsing and return.
+      // If the Vercel plan caps maxDuration at 10s (Hobby), the function
+      // itself is killed at 10s regardless — the 13s success implies the
+      // current deploy allows more; verify on the preview deploy.
+      signal: AbortSignal.timeout(25000),
     })
     if (!upstream.ok) {
       const detail = await upstream.text()

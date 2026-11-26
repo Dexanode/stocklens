@@ -68,17 +68,14 @@ export default async function handler(request, response) {
       response.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=300')
       return response.status(200).json({ persistent: true, thesis })
     }
-    if (request.method === 'DELETE') {
-      const input = parseBody(request)
-      const id = clean(request.query?.id, 100) || clean(input?.id, 100)
-      if (!id) return response.status(400).json({ error: 'Missing thesis id.' })
-      const index = theses.findIndex((item) => item.id === id)
-      if (index < 0) return response.status(404).json({ persistent: true, error: 'Thesis not found.' })
-      theses.splice(index, 1)
-      await put(PATH, JSON.stringify(theses.slice(0, MAX_ITEMS)), { access: 'private', addRandomSuffix: false, allowOverwrite: true, token, contentType: 'application/json' })
-      response.setHeader('Cache-Control', 'no-store')
-      return response.status(200).json({ persistent: true, deleted: id })
-    }
+    // No DELETE endpoint by design (review fix, 26 Nov 2026): thesis ids
+    // appear in public share links (?thesisId=), so anyone holding a link
+    // could delete someone else's thesis and there is no ownership model
+    // (no accounts, no recorded creator) to check against. The UI has no
+    // delete button either, so a public DELETE would be pure attack
+    // surface. Deletion is owner-only via the Vercel Blob dashboard
+    // (Storage -> Blob -> stocklens/theses.json, remove the entry) — that
+    // is also how the empty audit thesis th_68e55fb6… is removed.
     if (request.method !== 'POST' && request.method !== 'PUT') return response.status(405).json({ error: 'Method not allowed.' })
     const input = parseBody(request)
     if (input === null) return response.status(400).json({ error: 'Request body is not valid JSON.' })

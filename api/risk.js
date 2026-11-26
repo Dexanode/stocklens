@@ -122,9 +122,11 @@ export default async function handler(request, response) {
         messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Lower, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied B20 NAV, supply, multiplier, pause, freshness and data-quality fields. If history or change is unavailable, say so explicitly and lower confidence. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(compactAsset) }],
       }),
       // Bound the upstream call so a slow Vikey cannot hang the function
-      // into a Vercel timeout (audit C-2). 8s leaves room inside the 10s
-      // Hobby function limit.
-      signal: AbortSignal.timeout(8000),
+      // into a Vercel timeout (audit C-2). 15s: the single-asset brief is
+      // quick, but the original 8s cap risked needless fallbacks on slow
+      // upstreams. vercel.json allows 30s for this route, so 15s leaves
+      // room for the response to be parsed and returned.
+      signal: AbortSignal.timeout(15000),
     })
     if (!upstream.ok) {
       const detail = await upstream.text()
