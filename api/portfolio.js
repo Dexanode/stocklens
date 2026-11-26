@@ -6,7 +6,8 @@ import { checkRateLimit } from './lib/rate-limit.js'
 // call, so it gets the tightest budget (audit C-2).
 const RATE_LIMIT = { limit: 10, windowMs: 60_000, keyPrefix: 'portfolio' }
 
-function fallbackPlan(universe, holdings) {
+function fallbackPlan(universe, holdings, reason, detail = {}) {
+  console.warn('Portfolio Agent fallback', { reason, ...detail })
   const usable = universe.filter((asset) => asset.price !== '—' && asset.dataQuality?.nav !== false)
   const weights = usable.map((asset) => Math.max(1, Number(asset.score || 0)))
   const total = weights.reduce((sum, value) => sum + value, 0) || 1
@@ -25,6 +26,7 @@ function fallbackPlan(universe, holdings) {
     source: 'StockLens deterministic fallback',
     paperOnly: true,
     fallback: true,
+    fallbackReason: reason,
   }
 }
 
@@ -64,6 +66,7 @@ export default async function handler(request, response) {
 
   let safeUniverse = []
   let safeHoldings = []
+  let stage = 'input'
   try {
     const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
     const universe = Array.isArray(input?.universe) ? input.universe.slice(0, 24) : []
@@ -101,6 +104,7 @@ export default async function handler(request, response) {
     safeUniverse = compactUniverse
     safeHoldings = compactHoldings
 
+    stage = 'upstream'
     const upstream = await fetch('https://api-plan.vikey.ai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.VIKEY_API_KEY}`, 'Content-Type': 'application/json' },
@@ -136,9 +140,9 @@ export default async function handler(request, response) {
       signal: AbortSignal.timeout(25000),
     })
     if (!upstream.ok) {
-      const detail = await upstream.text()
-      return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings))
+      return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings, 'upstream_http_error', { status: upstream.status }))
     }
+    stage = 'response_parse'
     const payload = await upstream.json()
     const content = payload.choices?.[0]?.message?.content
     const result = parseModelJson(content)
@@ -146,7 +150,13 @@ export default async function handler(request, response) {
     const allocations = Array.isArray(result?.allocations) ? result.allocations : []
     const total = allocations.reduce((sum, item) => sum + Number(item.targetPercent || 0), 0)
     if (!result?.summary || !Array.isArray(result?.actions) || allocations.length !== compactUniverse.length || Math.round(total) !== 100 || allocations.some((item) => !symbols.has(item.symbol))) {
-      return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings))
+      return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings, 'invalid_allocation', {
+        expectedCount: compactUniverse.length, receivedCount: allocations.length,
+        total: Number.isFinite(total) ? total : null,
+        unknownSymbols: allocations.filter((item) => !symbols.has(item.symbol)).length,
+        missingSummary: !result?.summary, missingActions: !Array.isArray(result?.actions),
+        finishReason: typeof payload.choices?.[0]?.finish_reason === 'string' ? payload.choices[0].finish_reason.slice(0, 32) : null,
+      }))
     }
     const confidenceMap = { low: 35, medium: 60, high: 80 }
     const rawConfidence = Number(result.confidence)
@@ -162,6 +172,7 @@ export default async function handler(request, response) {
     // not answer with an empty 200 "plan" — that bypassed the 400 above
     // (audit M-10).
     if (!safeUniverse.length) return response.status(400).json({ error: 'Portfolio payload requires a B20 asset universe' })
-    response.status(200).json(fallbackPlan(safeUniverse, safeHoldings))
+    const reason = error?.name === 'TimeoutError' || error?.name === 'AbortError' ? 'upstream_timeout' : stage === 'response_parse' ? 'invalid_model_response' : 'upstream_request_error'
+    response.status(200).json(fallbackPlan(safeUniverse, safeHoldings, reason))
   }
 }

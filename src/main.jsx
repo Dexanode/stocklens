@@ -1563,6 +1563,7 @@ function App() {
                   <b>{portfolioPlan ? portfolioPlan.regime : "READY"}</b>
                 </div>
                 {portfolioPlan && <div className="agent-meta"><span>Confidence <b>{portfolioPlan.confidence ?? "—"}/100</b></span><span>Universe <b>{Object.keys(marketAssets).length} B20</b></span></div>}
+                {portfolioPlan && <p role="status">Source: {portfolioPlan.source || "Unknown"}{portfolioPlan.fallback ? ` · Fallback reason: ${portfolioPlan.fallbackReason || "Unavailable"}` : ""}</p>}
                 <p>
                   Baca seluruh B20 watchlist dan paper holdings untuk menyusun target allocation serta langkah rebalance.
                 </p>
