@@ -188,18 +188,29 @@ function SharedThesisPage({ thesis, onExit }) {
 }
 
 function candlesForRange(candles = [], range) {
-  const limits = { "1W": 7, "1M": 30, "3M": 90, "1Y": 260 };
-  return candles.slice(-(limits[range] || 30));
+  const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+  const cutoff = Date.now() - days[range] * 864e5;
+  return candles.filter(candle => candle.timestamp >= cutoff);
 }
 
 function candlesFromHistory(history = []) {
   const rows = history.filter((row) => Number.isFinite(Number(row?.price)) && Number.isFinite(Number(row?.timestamp))).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
-  return rows.map((row, index) => {
-    const close = Number(row.price);
-    const open = Number(rows[index - 1]?.price ?? close);
-    const spread = Math.max(Math.abs(close - open) * 0.35, close * 0.001);
-    return { timestamp: row.timestamp, open, close, high: Math.max(open, close) + spread, low: Math.max(0, Math.min(open, close) - spread) };
-  });
+  const buckets = new Map();
+  for (const row of rows) {
+    const price = Number(row.price);
+    if (price <= 0) continue;
+    const day = Math.floor(row.timestamp / 864e5);
+    const candle = buckets.get(day);
+    if (candle) {
+      candle.high = Math.max(candle.high, price);
+      candle.low = Math.min(candle.low, price);
+      candle.close = price;
+      candle.timestamp = Number(row.timestamp);
+    } else {
+      buckets.set(day, { timestamp: Number(row.timestamp), open: price, high: price, low: price, close: price });
+    }
+  }
+  return [...buckets.values()];
 }
 
 function changeTone(value) {
@@ -498,7 +509,7 @@ function App() {
   const scoreBasis = insight.scoreBasis ? `fresh ${insight.scoreBasis.freshness} · supply ${insight.scoreBasis.supply} · history ${insight.scoreBasis.history} · change ${insight.scoreBasis.change}` : "live NAV quality and model context";
   const allocation = useMemo(() => {
     const price = Number(String(asset.price).replace(/[$,]/g, ""));
-    return Number.isFinite(price) && price > 0 ? Math.round((budget / price) * 100) / 100 : 0;
+    return Number.isFinite(price) && price > 0 ? budget / price : 0;
   }, [asset, budget]);
   const portfolioMetrics = useMemo(() => {
     const rows = portfolio.map((item) => {
@@ -854,8 +865,10 @@ function App() {
       );
       setPortfolioPlan(result);
       setNotice("Portfolio Agent selesai. Review target allocation sebelum paper trade.");
+      return true;
     } catch (error) {
       setPortfolioAgentError(error?.message || "Portfolio Agent belum tersedia.");
+      return false;
     } finally {
       setPortfolioAgentLoading(false);
     }
@@ -870,15 +883,17 @@ function App() {
     setJudgeRunning(true);
     setNotice("Judge Mode dimulai: membaca NAV B20 dan menyiapkan thesis paper-only.");
     window.setTimeout(() => setJudgeStep(2), 650);
-    window.setTimeout(() => {
+    window.setTimeout(async () => {
       setJudgeStep(3);
-      runPortfolioAgent();
-    }, 1350);
-    window.setTimeout(() => {
-      setJudgeStep(4);
+      const ready = await runPortfolioAgent();
       setJudgeRunning(false);
+      if (!ready) {
+        setNotice("Portfolio Agent gagal. Jalankan ulang walkthrough.");
+        return;
+      }
+      setJudgeStep(4);
       setNotice("Judge Mode siap. Review rebalance lalu apply ke paper book atau record thesis secara sukarela.");
-    }, 2300);
+    }, 1350);
   }
 
   async function saveThesis() {
@@ -1321,6 +1336,7 @@ function App() {
                     ].map(([value, label]) => (
                       <button
                         key={value}
+                        disabled={value === "candles" && !chartCandles.length}
                         className={chartType === value ? "active" : ""}
                         onClick={() => setChartType(value)}
                       >
@@ -1642,7 +1658,7 @@ function App() {
               <div className="sim-result">
                 <div>
                   <span>Est. units</span>
-                  <strong>{allocation}</strong>
+                  <strong>{formatUnits(allocation)}</strong>
                 </div>
                 <div>
                   <span>Notional</span>

@@ -26,7 +26,7 @@ function historyStats(rows = []) {
   const returns = prices.slice(1).map((price, index) => ((price - prices[index]) / prices[index]) * 100).filter(Number.isFinite)
   const mean = returns.reduce((sum, value) => sum + value, 0) / Math.max(returns.length, 1)
   const variance = returns.reduce((sum, value) => sum + ((value - mean) ** 2), 0) / Math.max(returns.length, 1)
-  return { historyCount: prices.length, historyChangePct: ((prices.at(-1) - prices[0]) / prices[0]) * 100, volatilityPct: Math.sqrt(variance) }
+  return { historyCount: prices.length, historyChangePct: ((prices.at(-1) - prices[0]) / prices[0]) * 100, volatilityPct: returns.length >= 2 ? Math.sqrt(variance) : null }
 }
 
 function parseModelJson(content) {
@@ -68,7 +68,7 @@ export default async function handler(request, response) {
       pausedFeatures: Array.isArray(asset.pausedFeatures) ? asset.pausedFeatures.slice(0, 6) : [],
       dataQuality: asset.dataQuality || {},
       ...historyStats(Array.isArray(asset.navHistory) ? asset.navHistory.slice(-260) : []),
-      volatilityPct: Number.isFinite(Number(asset.volatility)) ? Number(asset.volatility) : historyStats(asset.navHistory).volatilityPct,
+      ...(typeof asset.volatility === 'number' && Number.isFinite(asset.volatility) && asset.volatility >= 0 ? { volatilityPct: asset.volatility } : {}),
     }))
     const compactHoldings = holdings.map((item) => ({
       symbol: String(item.symbol || '').slice(0, 24),
