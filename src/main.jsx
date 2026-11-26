@@ -13,12 +13,13 @@ import { baseSepolia } from "wagmi/chains";
 import "./index.css";
 import "./b20.css";
 
+const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
   appName: "StockLens",
   appDescription: "Onchain research terminal for tokenized stock experiments.",
   appUrl: "https://stocklens-black-six.vercel.app",
   appIcon: "https://stocklens-black-six.vercel.app/favicon.svg",
-  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "YOUR_PROJECT_ID",
+  projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "00000000000000000000000000000001",
   chains: [baseSepolia],
   ssr: false,
 });
@@ -91,6 +92,20 @@ const assets = {
   },
 };
 
+const safeDemoAssets = Object.fromEntries(Object.entries(assets).map(([symbol, item]) => [symbol, {
+  ...item,
+  price: "—",
+  change: "N/A",
+  risk: "Unknown",
+  score: null,
+  volume: "NAV unavailable",
+  time: "Waiting for API",
+  points: "",
+  candles: [],
+  navHistory: [],
+  dataQuality: { nav: false, history: false, change: false },
+}]));
+
 const briefs = {
   AAPLc:
     "Momentum is positive, but the signal is concentrated in one clean trend. Watch liquidity before treating the move as conviction.",
@@ -116,11 +131,12 @@ const USDC_ABI = ["function balanceOf(address owner) view returns (uint256)", "f
 const REGISTRY_ABI = [
   "function recordThesis(string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore) returns (uint256)",
   "function thesisCount() view returns (uint256)",
-  "function getThesis(uint256 thesisId) view returns (address researcher,string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore,uint256 timestamp)",
+  "function getThesis(uint256 thesisId) view returns (tuple(address researcher,string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore,uint256 timestamp))",
   "event ThesisRecorded(uint256 indexed thesisId,address indexed researcher,string symbol,uint256 priceCents,int256 changeBps,uint8 riskScore)",
 ];
 
 function chartPointsForRange(points, range) {
+  if (!points) return "";
   const presets = {
     "1W": { scale: 0.72, offset: 13 },
     "1M": { scale: 1, offset: 0 },
@@ -147,9 +163,95 @@ function chartPointsForRange(points, range) {
     .join(" ");
 }
 
+function numericPrice(value) {
+  const parsed = Number(String(value ?? "").replace(/[$,]/g, ""));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function SharedThesisPage({ thesis, onExit }) {
+  const change = Number.isFinite(Number(thesis.changeSinceEntry)) ? Number(thesis.changeSinceEntry) : null;
+  return (
+    <div className="shared-thesis-page">
+      <header className="shared-thesis-topbar"><a className="shared-thesis-brand" href="/">STOCK<span>LENS</span></a><span>SHARED RESEARCH / PAPER ONLY</span></header>
+      <main className="shared-thesis-main">
+        <div className="kicker"><span>PUBLIC THESIS</span> / {thesis.symbol}</div>
+        <div className="shared-thesis-heading"><div><h1>{thesis.title}</h1><p>{thesis.symbol} · {thesis.assetName || "Tokenized equity"} · Base B20</p></div><span className={`workspace-status ${(thesis.status || "OPEN").toLowerCase()}`}>{thesis.status || "OPEN"}</span></div>
+        <div className="shared-thesis-grid">
+          <section className="shared-thesis-card shared-thesis-note"><span>THESIS</span><p>{thesis.note}</p><div className="shared-thesis-meta"><span>CREATED <b>{new Date(thesis.createdAt).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" })}</b></span><span>MODEL <b>{thesis.source || "StockLens baseline"}</b></span></div></section>
+          <section className="shared-thesis-card"><span>OUTCOME SNAPSHOT</span><strong className={change === null ? "" : change >= 0 ? "up" : "down"}>{change === null ? "NAV PENDING" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><div className="shared-thesis-metrics"><span>ENTRY <b>{thesis.entryPrice || "—"}</b></span><span>CURRENT <b>{thesis.currentPrice || "—"}</b></span><span>SCORE <b>{thesis.score ?? "—"}/100</b></span><span>CONVICTION <b>{thesis.conviction ?? "—"}/5</b></span><span>TARGET <b>{thesis.target === null || thesis.target === undefined ? "—" : `${thesis.target}%`}</b></span><span>REVIEWED <b>{thesis.reviewedAt ? new Date(thesis.reviewedAt).toLocaleDateString([], { day: "2-digit", month: "short" }) : "Not yet"}</b></span></div></section>
+        </div>
+        <div className="shared-thesis-proof"><span>DATA CONTEXT</span><b>B20 NAV / BASE MAINNET 8453</b><b>PAPER REGISTRY / BASE SEPOLIA 84532</b><small>Shared snapshot. This page does not execute trades, custody funds, or provide financial advice.</small></div>
+        <div className="shared-thesis-actions"><button type="button" onClick={() => navigator.clipboard?.writeText(window.location.href)}>COPY LINK ↗</button><button type="button" onClick={onExit}>OPEN STOCKLENS TERMINAL ↗</button></div>
+      </main>
+    </div>
+  );
+}
+
 function candlesForRange(candles = [], range) {
   const limits = { "1W": 7, "1M": 30, "3M": 90, "1Y": 260 };
   return candles.slice(-(limits[range] || 30));
+}
+
+function candlesFromHistory(history = []) {
+  const rows = history.filter((row) => Number.isFinite(Number(row?.price)) && Number.isFinite(Number(row?.timestamp))).sort((a, b) => Number(a.timestamp) - Number(b.timestamp));
+  return rows.map((row, index) => {
+    const close = Number(row.price);
+    const open = Number(rows[index - 1]?.price ?? close);
+    const spread = Math.max(Math.abs(close - open) * 0.35, close * 0.001);
+    return { timestamp: row.timestamp, open, close, high: Math.max(open, close) + spread, low: Math.max(0, Math.min(open, close) - spread) };
+  });
+}
+
+function changeTone(value) {
+  return String(value || "").trim().startsWith("+") ? "up" : String(value || "").trim().startsWith("-") ? "down" : "neutral-change";
+}
+
+function formatUSD(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number) : "—";
+}
+
+function formatUnits(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toLocaleString("en-US", { maximumFractionDigits: 6 }) : "—";
+}
+
+function hasNav(item) {
+  const price = Number(String(item?.price || "").replace(/[$,]/g, ""));
+  return item?.dataQuality?.nav === true || (Number.isFinite(price) && price > 0);
+}
+
+function hasHistory(item) {
+  return Array.isArray(item?.navHistory) && item.navHistory.length >= 3;
+}
+
+function isTrending(item) {
+  const change = Number.parseFloat(String(item?.change || "").replace("%", ""));
+  return (Number.isFinite(change) && Math.abs(change) >= 1) || Number(item?.score || 0) >= 75;
+}
+
+function chartRangeLabels(range) {
+  return {
+    "1W": ["7D AGO", "3D AGO", "NOW"],
+    "1M": ["30D AGO", "15D AGO", "NOW"],
+    "3M": ["90D AGO", "45D AGO", "NOW"],
+    "1Y": ["1Y AGO", "6M AGO", "NOW"],
+  }[range] || ["START", "MID", "NOW"];
+}
+
+function pointsFromSnapshots(history = [], range) {
+  const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+  const cutoff = Date.now() - (days[range] || 30) * 864e5;
+  const rows = history.filter((row) => Number(row.timestamp) >= cutoff).slice(-260);
+  // Two observations only create a misleading straight-line/V-shape.
+  // Wait for a third point before presenting a trend as a chart.
+  if (rows.length < 3) return "";
+  const values = rows.map((row) => Number(row.price)).filter(Number.isFinite);
+  if (values.length < 2) return "";
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const scale = Math.max(high - low, high * 0.001, 0.01);
+  return values.map((value, index) => `${4 + (index * 720) / Math.max(values.length - 1, 1)},${84 - ((value - low) / scale) * 74}`).join(" ");
 }
 
 function CandleChart({ candles, color }) {
@@ -194,6 +296,15 @@ function CandleChart({ candles, color }) {
   );
 }
 
+function SnapshotChart({ color }) {
+  return (
+    <g>
+      <line x1="4" x2="724" y1="46" y2="46" stroke={color} strokeWidth="2" vectorEffect="non-scaling-stroke" />
+      <circle cx="724" cy="46" r="4" fill={color} />
+    </g>
+  );
+}
+
 function StockLensLogo({ compact = false }) {
   return (
     <span
@@ -234,6 +345,9 @@ function StockLensLogo({ compact = false }) {
 }
 
 function WalletConnectButton({ className = "wallet-button" }) {
+  if (!/^[a-z0-9]{32}$/i.test(walletConnectProjectId)) {
+    return <button className={className} type="button" disabled title="WalletConnect project ID is not configured">Wallet modal unavailable</button>;
+  }
   return (
     <ConnectButton.Custom>
       {({ account, chain, openAccountModal, openChainModal, openConnectModal, mounted }) => {
@@ -261,17 +375,26 @@ function WalletConnectButton({ className = "wallet-button" }) {
 }
 
 function App() {
+  const [theme, setTheme] = useState(() => {
+    try { return window.localStorage.getItem("stocklens-theme") || "light"; } catch { return "light"; }
+  });
   const [complianceAccepted, setComplianceAccepted] = useState(() => {
     try {
-      return window.localStorage.getItem("stocklens-compliance-v1") === "accepted";
+      const stored = JSON.parse(window.localStorage.getItem("stocklens-compliance-v2") || "null");
+      return stored?.accepted === true && stored?.country && stored.country !== "US";
     } catch {
       return false;
     }
   });
-  const [complianceCountry, setComplianceCountry] = useState("");
+  const [complianceCountry, setComplianceCountry] = useState(() => {
+    try { return JSON.parse(window.localStorage.getItem("stocklens-compliance-v2") || "null")?.country || ""; } catch { return ""; }
+  });
   const [complianceConfirmed, setComplianceConfirmed] = useState(false);
   const [complianceError, setComplianceError] = useState("");
   const [selected, setSelected] = useState("AAPLc");
+  const [marketSearch, setMarketSearch] = useState("");
+  const [marketFilter, setMarketFilter] = useState("all");
+  const [marketSort, setMarketSort] = useState("score");
   const [range, setRange] = useState("1M");
   const [chartType, setChartType] = useState("line");
   const [budget, setBudget] = useState(1000);
@@ -283,29 +406,106 @@ function App() {
   const [notice, setNotice] = useState("");
   const [txHash, setTxHash] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [marketAssets, setMarketAssets] = useState(assets);
+  const [marketAssets, setMarketAssets] = useState(safeDemoAssets);
   const [riskBriefs, setRiskBriefs] = useState(briefs);
   const [riskInsights, setRiskInsights] = useState({});
   const [dataMode, setDataMode] = useState("DEMO DATA");
   const [riskLoading, setRiskLoading] = useState(false);
+  const [aiDetailsOpen, setAiDetailsOpen] = useState(false);
   const [portfolioPlan, setPortfolioPlan] = useState(null);
+  const [portfolioPreview, setPortfolioPreview] = useState(false);
   const [portfolioAgentLoading, setPortfolioAgentLoading] = useState(false);
   const [portfolioAgentError, setPortfolioAgentError] = useState("");
+  const [expandedRebalance, setExpandedRebalance] = useState(null);
   const [thesisHistory, setThesisHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [historyError, setHistoryError] = useState("");
+  const [judgeStep, setJudgeStep] = useState(0);
+  const [judgeRunning, setJudgeRunning] = useState(false);
+  const [sharedThesis, setSharedThesis] = useState(() => {
+    try {
+      const raw = new URLSearchParams(window.location.search).get("thesis");
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  });
+  const [sharedThesisId] = useState(() => new URLSearchParams(window.location.search).get("thesisId"));
+  const [sharedThesisLoading, setSharedThesisLoading] = useState(() => Boolean(new URLSearchParams(window.location.search).get("thesisId")));
+  const [thesisWorkspace, setThesisWorkspace] = useState(() => {
+    try { return JSON.parse(window.localStorage.getItem("stocklens-thesis-workspace-v1") || "[]"); } catch { return []; }
+  });
+  const [thesisTitle, setThesisTitle] = useState("");
+  const [thesisNote, setThesisNote] = useState("");
+  const [thesisConviction, setThesisConviction] = useState(3);
+  const [followUps, setFollowUps] = useState({});
+  const [followUpLoading, setFollowUpLoading] = useState({});
+  const [thesisEvents, setThesisEvents] = useState(() => {
+    try { return JSON.parse(window.localStorage.getItem("stocklens-thesis-events-v1") || "[]"); } catch { return []; }
+  });
+  const [dismissedAlerts, setDismissedAlerts] = useState(() => {
+    try { return JSON.parse(window.localStorage.getItem("stocklens-thesis-alerts-v1") || "{}"); } catch { return {}; }
+  });
   const { address } = useAccount();
   const asset = marketAssets[selected];
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try { window.localStorage.setItem("stocklens-theme", theme); } catch { /* theme persistence is optional */ }
+  }, [theme]);
+  const filteredMarketAssets = useMemo(() => {
+    const query = marketSearch.trim().toLowerCase();
+    return Object.entries(marketAssets).filter(([symbol, item]) => {
+      const matchesQuery = !query || `${symbol} ${item.name} ${item.sector}`.toLowerCase().includes(query);
+      const change = Number.parseFloat(String(item.change).replace("%", ""));
+      const matchesFilter = marketFilter === "all" || (marketFilter === "nav" && hasNav(item)) || (marketFilter === "trending" && isTrending(item));
+      return matchesQuery && matchesFilter;
+    }).sort(([, left], [, right]) => {
+      if (marketSort === "price") return Number(String(right.price).replace(/[$,]/g, "")) - Number(String(left.price).replace(/[$,]/g, ""));
+      if (marketSort === "supply") return Number(right.totalSupply || 0) - Number(left.totalSupply || 0);
+      if (marketSort === "risk") return ({ High: 4, Elevated: 3, Moderate: 2, Lower: 1 }[right.risk] || 0) - ({ High: 4, Elevated: 3, Moderate: 2, Lower: 1 }[left.risk] || 0);
+      if (marketSort === "updated") return String(right.navUpdatedAt || "").localeCompare(String(left.navUpdatedAt || ""));
+      return Number(right.score || 0) - Number(left.score || 0);
+    });
+  }, [marketAssets, marketSearch, marketFilter, marketSort]);
   const chartPoints = useMemo(
-    () => chartPointsForRange(asset.points, range),
-    [asset.points, range],
+    () => chartPointsForRange(asset.points, range) || pointsFromSnapshots(asset.navHistory, range),
+    [asset.points, asset.navHistory, range],
   );
   const chartCandles = useMemo(
-    () => candlesForRange(asset.candles, range),
-    [asset.candles, range],
+    () => candlesForRange(asset.candles.length ? asset.candles : candlesFromHistory(asset.navHistory), range),
+    [asset.candles, asset.navHistory, range],
   );
+  const chartHistoryMeta = useMemo(() => {
+    const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+    const cutoff = Date.now() - (days[range] || 30) * 864e5;
+    const snapshots = (Array.isArray(asset.navHistory) ? asset.navHistory : [])
+      .filter((row) => Number(row.timestamp) >= cutoff && Number.isFinite(Number(row.price)))
+      .sort((left, right) => Number(left.timestamp) - Number(right.timestamp));
+    const latest = snapshots.at(-1);
+    const first = snapshots[0];
+    const coverageDays = first && latest ? Math.max(0, Math.round((Number(latest.timestamp) - Number(first.timestamp)) / 864e5)) : 0;
+    return {
+      count: snapshots.length,
+      coverageDays,
+      latest: latest?.timestamp ? new Date(Number(latest.timestamp)).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "Awaiting first observation",
+    };
+  }, [asset.navHistory, range]);
+  const chartLabels = chartRangeLabels(range);
+  const chartYLabels = useMemo(() => {
+    const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
+    const cutoff = Date.now() - (days[range] || 30) * 864e5;
+    const values = (Array.isArray(asset.navHistory) ? asset.navHistory : []).filter((row) => Number(row.timestamp) >= cutoff).map((row) => Number(row.price)).filter(Number.isFinite);
+    const fallbackPrice = Number(String(asset.price || "").replace(/[$,]/g, ""));
+    const source = values.length ? values : Number.isFinite(fallbackPrice) ? [fallbackPrice] : [0];
+    const low = Math.min(...source);
+    const high = Math.max(...source);
+    const span = Math.max(high - low, high * 0.02, 0.01);
+    return [high + span * 0.08, high + span * 0.02, low + span * 0.02, Math.max(0, low - span * 0.04)].map(formatUSD);
+  }, [asset.navHistory, asset.price, range]);
   const insight = riskInsights[selected] || {
-    confidence: 68,
+    confidence: 35,
+    score: asset.score,
+    risk: asset.risk,
+    source: "Local baseline",
+    fallback: true,
     bull: asset.bull,
     bear: asset.bear,
     catalysts: [
@@ -316,12 +516,55 @@ function App() {
     portfolioRationale:
       "Keep the position sized to the quality of the signal and review it against the rest of the portfolio.",
   };
-  const allocation = useMemo(
-    () =>
-      Math.round((budget / Number(asset.price.replace(/[$,]/g, ""))) * 100) /
-      100,
-    [asset, budget],
-  );
+  const displayedScore = Number.isFinite(Number(insight.score)) ? Number(insight.score) : Number(asset.score || 0);
+  const displayedRisk = insight.risk || asset.risk || "Unknown";
+  const modelLabel = riskLoading ? "MODEL / THINKING…" : riskInsights[selected] ? (insight.fallback ? "MODEL / FALLBACK" : "MODEL / V I K E Y") : "MODEL / BASELINE";
+  const scoreBasis = insight.scoreBasis ? `fresh ${insight.scoreBasis.freshness} · supply ${insight.scoreBasis.supply} · history ${insight.scoreBasis.history} · change ${insight.scoreBasis.change}` : "live NAV quality and model context";
+  const allocation = useMemo(() => {
+    const price = Number(String(asset.price).replace(/[$,]/g, ""));
+    return Number.isFinite(price) && price > 0 ? Math.round((budget / price) * 100) / 100 : 0;
+  }, [asset, budget]);
+  const portfolioMetrics = useMemo(() => {
+    const rows = portfolio.map((item) => {
+      const current = Number(String(marketAssets[item.symbol]?.price || "").replace(/[$,]/g, ""));
+      const value = Number.isFinite(current) ? item.units * current : item.notional;
+      const pnl = value - Number(item.notional || 0);
+      return { ...item, currentValue: value, pnl };
+    });
+    return { rows, total: rows.reduce((sum, item) => sum + item.currentValue, 0), pnl: rows.reduce((sum, item) => sum + item.pnl, 0) };
+  }, [portfolio, marketAssets]);
+  const rebalanceRows = useMemo(() => {
+    if (!portfolioPlan?.allocations) return [];
+    const current = new Map(portfolioMetrics.rows.map((item) => [item.symbol, item.currentValue]));
+    return portfolioPlan.allocations.map((target) => {
+      const currentPercent = portfolioMetrics.total > 0 ? (Number(current.get(target.symbol) || 0) / portfolioMetrics.total) * 100 : 0;
+      const targetValue = Number(budget) * Number(target.targetPercent || 0) / 100;
+      const currentValue = Number(current.get(target.symbol) || 0);
+      const delta = Number(target.targetPercent || 0) - currentPercent;
+      const deltaValue = targetValue - currentValue;
+      return { ...target, currentPercent, targetValue, currentValue, delta, deltaValue, action: delta > 0.5 ? "ADD" : delta < -0.5 ? "REDUCE" : "HOLD" };
+    });
+  }, [portfolioPlan, portfolioMetrics, budget]);
+  const targetPortfolio = useMemo(() => {
+    if (!portfolioPlan?.allocations?.length) return [];
+    return portfolioPlan.allocations.filter((item) => Number(item.targetPercent) > 0).map((item) => {
+      const market = marketAssets[item.symbol];
+      const price = Number(String(market?.price || "").replace(/[$,]/g, ""));
+      const notional = Math.round(Number(budget) * Number(item.targetPercent) / 100 * 100) / 100;
+      return { symbol: item.symbol, units: Number.isFinite(price) && price > 0 ? Number((notional / price).toFixed(8)) : 0, notional, entryPrice: price };
+    });
+  }, [portfolioPlan, marketAssets, budget]);
+  const previewRows = useMemo(() => {
+    if (!portfolioPlan?.allocations?.length) return [];
+    const current = new Map(portfolioMetrics.rows.map((item) => [item.symbol, item.currentValue]));
+    const targets = new Map(targetPortfolio.map((item) => [item.symbol, item.notional]));
+    return rebalanceRows.map((item) => {
+      const currentValue = Number(current.get(item.symbol) || 0);
+      const targetValue = Number(targets.get(item.symbol) || 0);
+      const deltaValue = targetValue - currentValue;
+      return { ...item, currentValue, targetValue, deltaValue, action: deltaValue > 0.5 ? "ADD" : deltaValue < -0.5 ? "REDUCE" : "HOLD" };
+    });
+  }, [portfolioPlan, portfolioMetrics, rebalanceRows, targetPortfolio]);
 
   useEffect(() => {
     setWallet(address || "");
@@ -339,7 +582,25 @@ function App() {
       )
       .then((payload) => {
         if (Object.keys(payload.data || {}).length) {
-          setMarketAssets((current) => ({ ...current, ...payload.data }));
+          const now = Date.now();
+          let stored = {};
+          try { stored = JSON.parse(window.localStorage.getItem("stocklens-nav-history-v1") || "{}"); } catch { stored = {}; }
+          const nextData = Object.fromEntries(Object.entries(payload.data).map(([symbol, item]) => {
+            const price = Number(String(item.price).replace(/[$,]/g, ""));
+            const history = Array.isArray(stored[symbol]) ? stored[symbol].filter((row) => now - Number(row.timestamp) <= 366 * 864e5) : [];
+            if (Number.isFinite(price) && price > 0 && (history.length === 0 || now - Number(history.at(-1).timestamp) > 15 * 60e3)) history.push({ timestamp: now, price });
+            stored[symbol] = history.slice(-260);
+            return [symbol, { ...item, navHistory: history }];
+          }));
+          try { window.localStorage.setItem("stocklens-nav-history-v1", JSON.stringify(stored)); } catch { /* snapshot storage is optional */ }
+          setMarketAssets((current) => ({ ...current, ...nextData }));
+          fetch("/api/nav-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshots: Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { price: Number(String(item.price).replace(/[$,]/g, "")) }])) }) })
+            .then((result) => result.json())
+            .then((historyPayload) => {
+              if (!historyPayload.persistent || !historyPayload.history) return;
+              setMarketAssets((current) => Object.fromEntries(Object.entries(current).map(([symbol, item]) => [symbol, { ...item, navHistory: historyPayload.history[symbol] || item.navHistory || [] }] )));
+            })
+            .catch(() => {});
           setDataMode("B20 MAINNET");
         }
       })
@@ -347,6 +608,8 @@ function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
     setRiskLoading(true);
     const aiAsset = {
       symbol: selected,
@@ -357,11 +620,17 @@ function App() {
       risk: asset.risk,
       score: asset.score,
       volume: asset.volume,
+      navUpdatedAt: asset.navUpdatedAt,
+      totalSupply: asset.totalSupply,
+      multiplier: asset.multiplier,
+      pausedFeatures: asset.pausedFeatures,
+      dataQuality: asset.dataQuality,
     };
     fetch("/api/risk", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "x-stocklens-country": complianceCountry || "UNKNOWN" },
       body: JSON.stringify({ asset: aiAsset }),
+      signal: controller.signal,
     })
       .then((result) =>
         result.ok
@@ -369,26 +638,60 @@ function App() {
           : Promise.reject(new Error("risk_unavailable")),
       )
       .then((result) => {
+        if (!active) return;
         if (result.summary) {
-          const enrichedSummary = [
-            result.summary,
-            result.catalysts?.length
-              ? `Catalysts: ${result.catalysts.join(" · ")}`
-              : "",
-            result.risks?.length ? `Risks: ${result.risks.join(" · ")}` : "",
-          ]
-            .filter(Boolean)
-            .join(" ");
           setRiskBriefs((current) => ({
             ...current,
-            [selected]: enrichedSummary,
+            [selected]: result.summary,
           }));
           setRiskInsights((current) => ({ ...current, [selected]: result }));
+          setMarketAssets((current) => ({
+            ...current,
+            [selected]: {
+              ...current[selected],
+              score: Number.isFinite(Number(result.score)) ? Number(result.score) : current[selected]?.score,
+              risk: result.risk || current[selected]?.risk,
+            },
+          }));
         }
       })
-      .catch(() => {})
-      .finally(() => setRiskLoading(false));
-  }, [selected, asset]);
+      .catch((error) => {
+        if (active && error?.name !== "AbortError") setRiskBriefs((current) => ({ ...current, [selected]: "Risk service unavailable; showing the local baseline until live data returns." }));
+      })
+      .finally(() => { if (active) setRiskLoading(false); });
+    return () => { active = false; controller.abort(); };
+  }, [selected, asset.navUpdatedAt, asset.price]);
+
+  useEffect(() => {
+    setAiDetailsOpen(false);
+  }, [selected]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem("stocklens-thesis-workspace-v1", JSON.stringify(thesisWorkspace)); } catch { /* workspace persistence is optional */ }
+  }, [thesisWorkspace]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem("stocklens-thesis-events-v1", JSON.stringify(thesisEvents.slice(0, 120))); } catch { /* event persistence is optional */ }
+  }, [thesisEvents]);
+
+  useEffect(() => {
+    try { window.localStorage.setItem("stocklens-thesis-alerts-v1", JSON.stringify(dismissedAlerts)); } catch { /* alert persistence is optional */ }
+  }, [dismissedAlerts]);
+
+  useEffect(() => {
+    if (!sharedThesisId) return;
+    fetch(`/api/thesis?id=${encodeURIComponent(sharedThesisId)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error("shared_thesis_unavailable")))
+      .then((payload) => setSharedThesis(payload.thesis || null))
+      .catch(() => setSharedThesis(null))
+      .finally(() => setSharedThesisLoading(false));
+  }, [sharedThesisId]);
+
+  useEffect(() => {
+    thesisWorkspace.slice(0, 5).forEach((item) => {
+      if (!followUps[item.id] && !followUpLoading[item.id]) runFollowUp(item);
+    });
+  }, [thesisWorkspace.length, marketAssets]);
 
   useEffect(() => {
     let active = true;
@@ -425,29 +728,10 @@ function App() {
       setHistoryLoading(true);
       setHistoryError("");
       try {
-        const provider = new JsonRpcProvider("https://sepolia.base.org");
-        const registry = new Contract(REGISTRY_ADDRESS, REGISTRY_ABI, provider);
-        const count = Number(await registry.thesisCount());
-        const start = Math.max(0, count - 8);
-        const rows = await Promise.all(
-          Array.from({ length: count - start }, (_, index) =>
-            registry.getThesis(start + index),
-          ),
-        );
-        if (active)
-          setThesisHistory(
-            rows
-              .map((row, index) => ({
-                id: start + index,
-                researcher: row.researcher,
-                symbol: row.symbol,
-                price: Number(row.priceCents) / 100,
-                change: Number(row.changeBps) / 100,
-                score: Number(row.riskScore),
-                timestamp: Number(row.timestamp) * 1000,
-              }))
-              .reverse(),
-          );
+        const result = await fetch("/api/history");
+        const payload = await result.json();
+        if (!result.ok) throw new Error(payload.error || "history_unavailable");
+        if (active) setThesisHistory(payload.data || []);
       } catch {
         if (active)
           setHistoryError("History belum bisa dimuat dari Base Sepolia.");
@@ -544,13 +828,24 @@ function App() {
   function runSimulation() {
     setIsSimulating(true);
     setPortfolio((items) => [
-      { symbol: selected, units: allocation, notional: Number(budget) },
+      { symbol: selected, units: allocation, notional: Number(budget), entryPrice: Number(String(asset.price).replace(/[$,]/g, "")) },
       ...items.filter((item) => item.symbol !== selected),
     ]);
     setNotice(
       `${selected} paper position added. ${insight.portfolioRationale}`,
     );
     window.setTimeout(() => setIsSimulating(false), 850);
+  }
+
+  function applyPortfolioPlan() {
+    if (!targetPortfolio.length) return;
+    setPortfolio(targetPortfolio);
+    setPortfolioPreview(false);
+    setNotice(`Portfolio target applied to the local paper book: ${targetPortfolio.length} positions. No order was sent.`);
+  }
+
+  function removePosition(symbol) {
+    setPortfolio((items) => items.filter((item) => item.symbol !== symbol));
   }
 
   async function runPortfolioAgent() {
@@ -566,10 +861,17 @@ function App() {
         change: item.change,
         volume: item.volume,
         contractAddress: item.contractAddress,
+        navUpdatedAt: item.navUpdatedAt,
+        totalSupply: item.totalSupply,
+        multiplier: item.multiplier,
+        pausedFeatures: item.pausedFeatures,
+        dataQuality: item.dataQuality,
+        navHistory: Array.isArray(item.navHistory) ? item.navHistory.slice(-260) : [],
+        volatility: item.volatility ?? null,
       }));
       const result = await fetch("/api/portfolio", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-stocklens-country": complianceCountry || "UNKNOWN" },
         body: JSON.stringify({ universe, holdings: portfolio }),
       }).then((response) =>
         response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.error || "portfolio_agent_unavailable"))),
@@ -581,6 +883,165 @@ function App() {
     } finally {
       setPortfolioAgentLoading(false);
     }
+  }
+
+  function startJudgeDemo() {
+    const firstLive = Object.entries(marketAssets).find(([, item]) => hasNav(item))?.[0] || Object.keys(marketAssets)[0];
+    if (firstLive) {
+      setSelected(firstLive);
+      setJudgeStep(1);
+    }
+    setJudgeRunning(true);
+    setNotice("Judge Mode dimulai: membaca NAV B20 dan menyiapkan thesis paper-only.");
+    window.setTimeout(() => setJudgeStep(2), 650);
+    window.setTimeout(() => {
+      setJudgeStep(3);
+      runPortfolioAgent();
+    }, 1350);
+    window.setTimeout(() => {
+      setJudgeStep(4);
+      setJudgeRunning(false);
+      setNotice("Judge Mode siap. Review rebalance lalu apply ke paper book atau record thesis secara sukarela.");
+    }, 2300);
+  }
+
+  async function saveThesis() {
+    const next = {
+      id: `${selected}-${Date.now()}`,
+      symbol: selected,
+      title: thesisTitle.trim() || `${selected} / ${asset.name}`,
+      note: thesisNote.trim() || "Review the signal against NAV freshness, momentum, and portfolio context.",
+      conviction: Number(thesisConviction),
+      status: "OPEN",
+      createdAt: new Date().toISOString(),
+      entryPrice: asset.price,
+      score: displayedScore,
+      risk: displayedRisk,
+      change: asset.change,
+      target: portfolioPlan?.allocations?.find((item) => item.symbol === selected)?.targetPercent ?? null,
+      source: modelLabel,
+      entryPriceValue: numericPrice(asset.price),
+      lastReviewedAt: null,
+      reviewCount: 0,
+    };
+    let saved = next;
+    try {
+      const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
+      const payload = response.ok ? await response.json() : null;
+      if (payload?.thesis) saved = payload.thesis;
+    } catch { /* local cache remains available when persistence is offline */ }
+    setThesisWorkspace((items) => [saved, ...items.filter((item) => item.id !== saved.id)].slice(0, 30));
+    recordThesisEvent(saved.id, saved.symbol, "THESIS CREATED", saved.title);
+    setThesisTitle("");
+    setThesisNote("");
+    runFollowUp(saved);
+    setNotice(`${selected} thesis disimpan di workspace ${saved.id?.startsWith("th_") ? "server-side" : "local"}. Paper-only dan bisa direview ulang kapan saja.`);
+  }
+
+  function updateThesisStatus(id, status) {
+    const current = thesisWorkspace.find((item) => item.id === id);
+    const next = current ? { ...current, status, updatedAt: new Date().toISOString() } : null;
+    if (!next) return;
+    setThesisWorkspace((items) => items.map((item) => item.id === id ? next : item));
+    persistThesis(next);
+    recordThesisEvent(next.id, next.symbol, `STATUS → ${status}`, `Thesis status changed from the workspace.`);
+  }
+
+  async function persistThesis(item) {
+    if (!item?.id?.startsWith("th_")) return;
+    try { await fetch("/api/thesis", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) }); } catch { /* local state remains available */ }
+  }
+
+  async function runFollowUp(item) {
+    if (!item?.id) return;
+    setFollowUpLoading((current) => ({ ...current, [item.id]: true }));
+    try {
+      const response = await fetch("/api/follow-up", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ thesis: item, market: marketAssets[item.symbol] || {} }) });
+      if (!response.ok) throw new Error("follow_up_unavailable");
+      const result = await response.json();
+      setFollowUps((current) => ({ ...current, [item.id]: result }));
+    } catch { /* follow-up remains unavailable without hiding the thesis */ }
+    finally { setFollowUpLoading((current) => ({ ...current, [item.id]: false })); }
+  }
+
+  function reviewThesis(id) {
+    const item = thesisWorkspace.find((entry) => entry.id === id);
+    if (!item) return;
+    const currentPrice = numericPrice(marketAssets[item.symbol]?.price);
+    const next = {
+      ...item,
+      lastReviewedAt: new Date().toISOString(),
+      lastReviewedPrice: currentPrice,
+      reviewCount: Number(item.reviewCount || 0) + 1,
+      updatedAt: new Date().toISOString(),
+    };
+    setThesisWorkspace((items) => items.map((entry) => entry.id === id ? next : entry));
+    persistThesis(next);
+    runFollowUp(next);
+    recordThesisEvent(next.id, next.symbol, "OUTCOME REVIEWED", "NAV snapshot and agent follow-up refreshed.");
+    setNotice(`${item.symbol} outcome di-review dengan data NAV terbaru.`);
+  }
+
+  function recordThesisEvent(thesisId, symbol, type, detail) {
+    setThesisEvents((items) => [{ id: `${thesisId}-${Date.now()}`, thesisId, symbol, type, detail, createdAt: new Date().toISOString() }, ...items].slice(0, 120));
+  }
+
+  function dismissAlert(id) {
+    setDismissedAlerts((items) => ({ ...items, [id]: new Date().toISOString() }));
+  }
+
+  async function shareThesis(item) {
+    let serverId = item.id?.startsWith("th_") ? item.id : "";
+    if (!serverId) {
+      try {
+        const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) });
+        const payload = response.ok ? await response.json() : null;
+        if (payload?.thesis) {
+          serverId = payload.thesis.id;
+          setThesisWorkspace((items) => items.map((entry) => entry.id === item.id ? payload.thesis : entry));
+        }
+      } catch { /* fall back to local payload share below */ }
+    }
+    const outcome = thesisOutcome(item);
+    const payload = {
+      ...item,
+      assetName: marketAssets[item.symbol]?.name || item.symbol,
+      currentPrice: outcome.current ? `$${outcome.current.toFixed(2)}` : "—",
+      changeSinceEntry: outcome.change,
+      reviewedAt: item.lastReviewedAt || new Date().toISOString(),
+      sharedAt: new Date().toISOString(),
+    };
+    const url = serverId
+      ? `${window.location.origin}${window.location.pathname}?thesisId=${encodeURIComponent(serverId)}`
+      : `${window.location.origin}${window.location.pathname}?thesis=${encodeURIComponent(JSON.stringify(payload))}`;
+    const copied = navigator.clipboard?.writeText(url);
+    if (copied) copied.then(() => setNotice(`${item.symbol} shareable thesis link copied.`)).catch(() => setNotice("Link siap dibuat, tapi browser menolak akses clipboard."));
+    else setNotice("Link siap dibuat, tapi browser tidak menyediakan clipboard.");
+  }
+
+  function thesisOutcome(item) {
+    const entry = numericPrice(item.entryPriceValue ?? item.entryPrice);
+    const current = numericPrice(marketAssets[item.symbol]?.price);
+    const change = entry && current ? ((current - entry) / entry) * 100 : null;
+    return { entry, current, change };
+  }
+
+  const thesisAlerts = thesisWorkspace.flatMap((item) => {
+    const outcome = thesisOutcome(item);
+    const followUp = followUps[item.id];
+    const alerts = [];
+    if (outcome.change !== null && outcome.change <= -5) alerts.push({ id: `${item.id}-drawdown`, symbol: item.symbol, severity: "HIGH", title: "Return below thesis threshold", detail: `${outcome.change.toFixed(2)}% since entry. Reassess invalidation before adding risk.` });
+    if (followUp?.reviewWindow?.toLowerCase().includes("today") || followUp?.reviewWindow?.toLowerCase().includes("24 hours")) alerts.push({ id: `${item.id}-review`, symbol: item.symbol, severity: "REVIEW", title: "Thesis needs review", detail: followUp.nextAction });
+    if (item.status === "OPEN" && !item.lastReviewedAt && !followUp) alerts.push({ id: `${item.id}-first-review`, symbol: item.symbol, severity: "NEW", title: "First review pending", detail: "Run the follow-up agent after the first NAV observation." });
+    return alerts;
+  }).filter((alert) => !dismissedAlerts[alert.id]);
+  const timelineItems = [...thesisEvents].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))).slice(0, 30);
+
+  if (sharedThesisLoading) {
+    return <div className="shared-thesis-loading">READING SERVER-SIDE THESIS…</div>;
+  }
+  if (sharedThesis) {
+    return <SharedThesisPage thesis={sharedThesis} onExit={() => { window.history.replaceState({}, "", window.location.pathname); setSharedThesis(null); }} />;
   }
 
   const pick = (symbol) => {
@@ -603,7 +1064,7 @@ function App() {
       return;
     }
     try {
-      window.localStorage.setItem("stocklens-compliance-v1", "accepted");
+      window.localStorage.setItem("stocklens-compliance-v2", JSON.stringify({ accepted: true, country: complianceCountry, acceptedAt: new Date().toISOString() }));
     } catch {
       // The gate still applies for this session when storage is unavailable.
     }
@@ -615,13 +1076,13 @@ function App() {
       {!complianceAccepted && (
         <div className="compliance-backdrop" role="dialog" aria-modal="true" aria-labelledby="compliance-title">
           <form className="compliance-card" onSubmit={acceptCompliance}>
-            <div className="compliance-kicker">STOCKLENS / ACCESS CHECK</div>
+            <div className="compliance-kicker">StockLens / Access check</div>
             <h2 id="compliance-title">Research mode only.</h2>
             <p>
               StockLens adalah terminal riset untuk tokenized-stock reference data di Base.
               Semua posisi di sini bersifat simulasi dan tidak mengeksekusi order atau custody aset.
             </p>
-            <label className="compliance-label" htmlFor="compliance-country">YOUR LOCATION</label>
+            <label className="compliance-label" htmlFor="compliance-country">Your location</label>
             <select
               id="compliance-country"
               value={complianceCountry}
@@ -651,7 +1112,7 @@ function App() {
               <span>I understand this is paper-only research, not financial advice, and I will not use it where restricted.</span>
             </label>
             {complianceError && <p className="compliance-error">{complianceError}</p>}
-            <button className="compliance-submit" type="submit">ENTER RESEARCH TERMINAL <b>↗</b></button>
+            <button className="compliance-submit" type="submit">Enter research terminal <b>↗</b></button>
             <small className="compliance-note">Access is blocked for US users/persons. Do not connect funds or place live trades.</small>
           </form>
         </div>
@@ -674,11 +1135,14 @@ function App() {
             Risk lens
           </a>
           <a href="#simulate">Paper lab</a>
+          <a href="#thesis-workspace">Thesis workspace</a>
+          <a href="#thesis-activity">Activity center</a>
         </nav>
         <div className="side-bottom">
           <div className="base-chip">
-            <i /> BASE <span>8453</span>
+            <i /> B20 BASE <span>8453</span>
           </div>
+          <p className="chain-note">Paper registry / wallet: Base Sepolia <b>84532</b></p>
           <p>Research surface for tokenized stock experiments.</p>
           <a href="#simulate" className="side-link">
             Open paper lab <b>↗</b>
@@ -692,10 +1156,13 @@ function App() {
             <span>/ TERMINAL</span>
           </div>
           <div className="breadcrumb">
-            RESEARCH / <b>MARKET OVERVIEW</b>
+                Research / <b>Market overview</b>
           </div>
           <div className="top-actions">
-            <span className="paper-badge">PAPER ONLY</span>
+                <span className="paper-badge">Paper only</span>
+            <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
+              {theme === "dark" ? "Light" : "Dark"}
+            </button>
             <span className="status">
               <i /> {wallet ? "Wallet ready" : dataMode}
             </span>
@@ -707,7 +1174,7 @@ function App() {
             <div className="overview-heading">
               <div>
                 <div className="kicker">
-                  <span>01</span> DAILY BRIEFING / 24 NOV 2026
+                  <span>01</span> DAILY BRIEFING / {new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" }).format(new Date()).toUpperCase()}
                 </div>
                 <h1>
                   Research the
@@ -718,9 +1185,51 @@ function App() {
                   A focused terminal for understanding tokenized stock activity
                   on Base. Read the thesis before you make the move.
                 </p>
+                <div className="judge-demo" aria-label="Judge Mode product walkthrough">
+                  <div className="judge-demo-head">
+                    <div>
+                      <span className="kicker">JUDGE MODE / 60-SECOND WALKTHROUGH</span>
+                      <strong>From signal to proof.</strong>
+                    </div>
+                    <span className="judge-guardrail">PAPER ONLY · NO LIVE ORDER</span>
+                  </div>
+                  <div className="judge-steps">
+                    {["Research", "Decide", "Rebalance", "Verify"].map((label, index) => {
+                      const step = index + 1;
+                      return (
+                        <button
+                          key={label}
+                          type="button"
+                          className={judgeStep === step ? "active" : judgeStep > step ? "complete" : ""}
+                          onClick={() => setJudgeStep(step)}
+                        >
+                          <b>0{step}</b><span>{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="judge-demo-body">
+                    <p>
+                      {judgeStep === 0 && "Run the complete StockLens loop: live B20 reference data, transparent allocation, paper rebalance, and an optional Base Sepolia research proof."}
+                      {judgeStep === 1 && `Researching ${selected}: NAV freshness, supply, momentum, and risk context.`}
+                      {judgeStep === 2 && "The agent turns the market read into a thesis with confidence and explicit reasons."}
+                      {judgeStep === 3 && (portfolioPlan ? "Target allocation is ready. Open Paper Lab to inspect current vs target and the dollar delta." : "Portfolio Agent is preparing target allocation across the B20 universe.")}
+                      {judgeStep === 4 && "The result is reviewable and reversible: apply to the local paper book, then optionally record the thesis on Base Sepolia."}
+                    </p>
+                    <div className="judge-proof-grid">
+                      <span><small>Market data</small><b>Base Mainnet / 8453</b></span>
+                      <span><small>Paper registry</small><b>Base Sepolia / 84532</b></span>
+                      <span><small>Proof status</small><b>{txHash ? "TX RECORDED" : "READY WHEN YOU CONFIRM"}</b></span>
+                    </div>
+                  </div>
+                  <div className="judge-demo-actions">
+                    <button type="button" className="judge-primary" onClick={startJudgeDemo} disabled={judgeRunning}>{judgeRunning ? "WALKTHROUGH RUNNING…" : judgeStep ? "REPLAY WALKTHROUGH ↗" : "RUN 60-SECOND DEMO ↗"}</button>
+                    <a href="#simulate" className="judge-secondary">OPEN PAPER LAB</a>
+                  </div>
+                </div>
               </div>
               <div className="market-state">
-                <span>MARKET STATE</span>
+                <span>Market state</span>
                 <strong>Constructive</strong>
                 <small>Risk appetite is holding</small>
                 <div className="state-line">
@@ -735,19 +1244,19 @@ function App() {
               </div>
             </div>
             <div className="tape">
-              <span>MARKET TAPE</span>
+              <span>Market tape</span>
               {Object.entries(marketAssets).map(([symbol, item]) => (
                 <button key={symbol} onClick={() => pick(symbol)}>
                   <b>{symbol}</b>
                   <strong>{item.price}</strong>
                   <small
-                    className={item.change.startsWith("+") ? "up" : "down"}
+                    className={changeTone(item.change)}
                   >
                     {item.change}
                   </small>
                 </button>
               ))}
-              <span className="tape-end">ILLUSTRATIVE DATA ↗</span>
+              <span className="tape-end">{dataMode === "B20 MAINNET" ? "LIVE NAV / BASE 8453 ↗" : "NAV UNAVAILABLE / NO CLAIM"}</span>
             </div>
           </section>
           <section id="watchlist" className="research-grid">
@@ -755,16 +1264,24 @@ function App() {
               <div className="panel-head">
                 <div>
                   <span className="kicker">
-                    <span>02</span> WATCHLIST
+                    WATCHLIST
                   </span>
                   <h2>
                     Market <em>map</em>
                   </h2>
                 </div>
-                <span className="count">4 ASSETS</span>
+                  <div className="watchlist-tools">
+                    <label className="market-search">
+                      <span>Search</span>
+                      <input value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder="Ticker or name" aria-label="Search markets" />
+                    </label>
+                    <select className="market-select" value={marketFilter} onChange={(event) => setMarketFilter(event.target.value)} aria-label="Market filter"><option value="all">All</option><option value="nav">NAV available</option><option value="trending">Trending</option></select>
+                    <select className="market-select" value={marketSort} onChange={(event) => setMarketSort(event.target.value)} aria-label="Market sort"><option value="score">Score</option><option value="price">Price</option><option value="supply">Supply</option><option value="risk">Risk</option><option value="updated">Updated</option></select>
+                    <span className="count">{filteredMarketAssets.length}/{Object.keys(marketAssets).length} ASSETS</span>
+                  </div>
               </div>
               <div className="asset-list">
-                {Object.entries(marketAssets).map(([symbol, item]) => (
+                {filteredMarketAssets.map(([symbol, item]) => (
                   <button
                     key={symbol}
                     className={`asset-row ${symbol === selected ? "active" : ""}`}
@@ -778,11 +1295,13 @@ function App() {
                       <small>
                         {item.name} / {item.sector}
                       </small>
+                      <span className={`market-badge ${hasNav(item) ? "live" : "pending"}`}>{hasNav(item) ? "NAV LIVE" : "NAV UNAVAILABLE"}</span>
+                      {hasNav(item) && <span className={`market-badge ${hasHistory(item) ? "live" : "pending"}`}>{hasHistory(item) ? "HISTORY LIVE" : "HISTORY PENDING"}</span>}
                     </span>
                     <span className="asset-price">
                       <b>{item.price}</b>
                       <small
-                        className={item.change.startsWith("+") ? "up" : "down"}
+                        className={changeTone(item.change)}
                       >
                         {item.change}
                       </small>
@@ -800,7 +1319,7 @@ function App() {
               <div className="panel-head chart-head">
                 <div>
                   <span className="kicker">
-                    <span>SELECTED ASSET</span> / {asset.sector.toUpperCase()}
+                    <span>Selected asset</span> / {asset.sector}
                   </span>
                   <h2>
                     {selected} <small>{asset.name}</small>
@@ -809,14 +1328,14 @@ function App() {
                 <div className="asset-quote">
                   <strong>{asset.price}</strong>
                   <span
-                    className={asset.change.startsWith("+") ? "up" : "down"}
+                    className={changeTone(asset.change)}
                   >
                     {asset.change}
                   </span>
                 </div>
               </div>
               <div className="chart-toolbar">
-                <span>NAV / BASE MAINNET</span>
+                <span>NAV / Base mainnet</span>
                 <div className="chart-controls">
                   <div className="chart-modes">
                     {[
@@ -848,10 +1367,7 @@ function App() {
               </div>
               <div className="chart">
                 <div className="chart-y">
-                  <span>200</span>
-                  <span>150</span>
-                  <span>100</span>
-                  <span>50</span>
+                  {chartYLabels.map((label) => <span key={label}>{label}</span>)}
                 </div>
                 <svg
                   viewBox="0 0 728 90"
@@ -861,7 +1377,7 @@ function App() {
                 >
                   {chartType === "candles" && chartCandles.length ? (
                     <CandleChart candles={chartCandles} color={asset.color} />
-                  ) : (
+                  ) : chartPoints ? (
                     <>
                       <polyline
                         points={`4,90 ${chartPoints} 724,90`}
@@ -875,12 +1391,20 @@ function App() {
                         vectorEffect="non-scaling-stroke"
                       />
                     </>
-                  )}
+                  ) : null}
                 </svg>
+                {!chartPoints && !chartCandles.length && (
+                  <div className="chart-empty" role="status" aria-live="polite">
+                    <div className="chart-empty-mark" aria-hidden="true"><i /><i /><i /><i /><i /></div>
+                    <strong>{chartHistoryMeta.count < 3 ? "COLLECTING NAV HISTORY" : "HISTORY RANGE UNAVAILABLE"}</strong>
+                    <span>{chartHistoryMeta.count} snapshot{chartHistoryMeta.count === 1 ? "" : "s"} in {range}</span>
+                    <small>{chartHistoryMeta.count < 3 ? "Need 3 observations before showing a trend" : "No observations in this timeframe"}</small>
+                    <small>Last observation · {chartHistoryMeta.latest}</small>
+                    <b>Current reference · {asset.price}</b>
+                  </div>
+                )}
                 <div className="chart-x">
-                  <span>01 {range}</span>
-                  <span>15 {range}</span>
-                  <span>30 {range}</span>
+                  {chartLabels.map((label) => <span key={label}>{label}</span>)}
                 </div>
               </div>
               <div className="chart-foot">
@@ -890,11 +1414,11 @@ function App() {
                     style={{ background: asset.color }}
                   />{" "}
                   {chartType === "candles"
-                    ? "OHLC / live candles"
+                    ? chartCandles.length ? "OHLC / NAV-derived candles" : "OHLC / awaiting NAV history"
                     : "B20 NAV reference"}
                 </span>
                 <span>
-                  Volume {asset.volume} · {asset.time}
+                  {chartHistoryMeta.count} obs · {chartHistoryMeta.coverageDays}d coverage · {asset.time}
                 </span>
               </div>
             </div>
@@ -914,7 +1438,7 @@ function App() {
                 brief compresses the signal into something you can challenge.
               </p>
               <div className="method-note">
-                <span>METHOD NOTE</span>
+                <span>Method note</span>
                 <b>Momentum + liquidity + volatility</b>
                 <small>
                   Model output is illustrative and not financial advice.
@@ -924,57 +1448,75 @@ function App() {
             <div className="lens-panel panel">
               <div className="panel-head">
                 <span className="kicker">
-                  <span>AI BRIEF</span> / {selected}
+                  <span>AI brief</span> / {selected}
                 </span>
                 <span className="model-tag">
-                  {riskLoading ? "MODEL / THINKING…" : "MODEL / V I K E Y"}
+                  {`${modelLabel}${riskInsights[selected]?.confidence != null ? ` · CONF ${riskInsights[selected].confidence}/100` : ""}`}
                 </span>
               </div>
               <div className="score-row">
                 <div
                   className="score-ring"
                   style={{
-                    "--score": `${asset.score * 3.6}deg`,
+                    "--score": `${displayedScore * 3.6}deg`,
                     "--ring": asset.color,
                   }}
                 >
-                  <strong>{asset.score}</strong>
+                  <strong>{displayedScore || "—"}</strong>
                   <small>/100</small>
                 </div>
                 <div>
                   <span className="muted-label">SIGNAL QUALITY</span>
                   <h3>
-                    {asset.risk} <span>risk</span>
+                    {displayedRisk} <span>risk</span>
                   </h3>
                   <p>{riskBriefs[selected]}</p>
                 </div>
               </div>
-              <div className="case-grid">
-                <div>
-                  <span>BULL CASE</span>
-                  <b>{asset.bull}</b>
+              <button
+                className="ai-details-toggle"
+                type="button"
+                aria-expanded={aiDetailsOpen}
+                onClick={() => setAiDetailsOpen((open) => !open)}
+              >
+                <span>{aiDetailsOpen ? "HIDE RESEARCH DETAILS" : "VIEW RESEARCH DETAILS"}</span>
+                <b>{aiDetailsOpen ? "−" : "+"}</b>
+              </button>
+              {aiDetailsOpen && (
+                <div className="ai-details">
+                  <div className="ai-signals">
+                    <div><span>Catalysts</span><b>{(insight.catalysts || []).join(" · ") || "No catalyst data"}</b></div>
+                    <div><span>Risks</span><b>{(insight.risks || []).join(" · ") || "No risk data"}</b></div>
+                  </div>
+                  <small className="ai-source">SOURCE / {insight.source || "Unknown"} · BASIS / {scoreBasis}</small>
+                  <div className="case-grid">
+                    <div>
+                      <span>Bull case</span>
+                      <b>{asset.bull}</b>
+                    </div>
+                    <div>
+                      <span>Bear case</span>
+                      <b>{asset.bear}</b>
+                    </div>
+                  </div>
+                  <div className="lens-metrics">
+                    <div>
+                      <span>Momentum</span>
+                      <b className={changeTone(asset.change)}>
+                        {asset.change === "N/A" ? "Unavailable" : asset.change.startsWith("+") ? "Positive" : "Cooling"}
+                      </b>
+                    </div>
+                    <div>
+                      <span>Liquidity</span>
+                      <b>{asset.volume}</b>
+                    </div>
+                    <div>
+                      <span>Network</span>
+                      <b>8453 NAV / 84532 PAPER</b>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <span>BEAR CASE</span>
-                  <b>{asset.bear}</b>
-                </div>
-              </div>
-              <div className="lens-metrics">
-                <div>
-                  <span>Momentum</span>
-                  <b className={asset.change.startsWith("+") ? "up" : "down"}>
-                    {asset.change.startsWith("+") ? "Positive" : "Cooling"}
-                  </b>
-                </div>
-                <div>
-                  <span>Liquidity</span>
-                  <b>{asset.volume}</b>
-                </div>
-                <div>
-                  <span>Network</span>
-                  <b>Base Sepolia</b>
-                </div>
-              </div>
+              )}
             </div>
           </section>
           <section id="simulate" className="lab-grid">
@@ -993,26 +1535,28 @@ function App() {
               </p>
               {portfolio.length > 0 && (
                 <div className="portfolio-mini">
-                  <span>LOCAL PAPER PORTFOLIO</span>
-                  {portfolio.map((item) => (
+                  <span>Local paper portfolio</span>
+                  <div className="portfolio-totals"><b>{formatUSD(portfolioMetrics.total)}</b><strong className={Math.abs(portfolioMetrics.pnl) < 0.005 ? "neutral-change" : portfolioMetrics.pnl >= 0 ? "up" : "down"}>{portfolioMetrics.pnl >= 0 ? "+" : ""}{formatUSD(portfolioMetrics.pnl)} P/L</strong></div>
+                  {portfolioMetrics.rows.map((item) => (
                     <div key={item.symbol}>
                       <b>{item.symbol}</b>
                       <small>
-                        {item.units} units · ${item.notional.toLocaleString()}{" "}
-                        notional
+                        {formatUnits(item.units)} units · {formatUSD(item.currentValue)} value
                       </small>
-                      <strong className="up">
-                        +{marketAssets[item.symbol].change}
+                      <strong className={item.pnl >= 0 ? "up" : "down"}>
+                        {Math.abs(item.pnl) < 0.005 ? "—" : `${item.pnl >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.pnl))}`}
                       </strong>
+                      <button className="remove-position" onClick={() => removePosition(item.symbol)} aria-label={`Remove ${item.symbol}`}>×</button>
                     </div>
                   ))}
                 </div>
               )}
               <div className="agent-card">
                 <div className="agent-card-head">
-                  <span>PORTFOLIO AGENT</span>
+                  <span>Portfolio agent</span>
                   <b>{portfolioPlan ? portfolioPlan.regime : "READY"}</b>
                 </div>
+                {portfolioPlan && <div className="agent-meta"><span>Confidence <b>{portfolioPlan.confidence ?? "—"}/100</b></span><span>Universe <b>{Object.keys(marketAssets).length} B20</b></span></div>}
                 <p>
                   Baca seluruh B20 watchlist dan paper holdings untuk menyusun target allocation serta langkah rebalance.
                 </p>
@@ -1023,27 +1567,59 @@ function App() {
                 {portfolioPlan && (
                   <div className="agent-plan">
                     <strong>{portfolioPlan.summary}</strong>
-                    <div className="allocation-list">
-                      {portfolioPlan.allocations.map((item) => (
-                        <div key={item.symbol}>
-                          <span><b>{item.symbol}</b><small>{item.reason}</small></span>
-                          <strong>{item.targetPercent}%</strong>
+                    <div className="rebalance-table" aria-label="Paper portfolio rebalance diff">
+                      <div className="rebalance-head"><span>Asset</span><span>Current</span><span>Target</span><span>Delta</span><span>Action</span></div>
+                      {rebalanceRows.map((item) => (
+                        <div key={item.symbol} className={`rebalance-row ${expandedRebalance === item.symbol ? "expanded" : ""}`}>
+                          <button className="rebalance-summary" type="button" onClick={() => setExpandedRebalance((current) => current === item.symbol ? null : item.symbol)} aria-expanded={expandedRebalance === item.symbol}>
+                            <span><b>{item.symbol}</b><small>{item.reason}</small></span>
+                            <strong>{item.currentPercent.toFixed(1)}%</strong>
+                            <strong>{item.targetPercent}%</strong>
+                            <strong className={item.delta >= 0 ? "up" : "down"}>{item.delta >= 0 ? "+" : ""}{item.delta.toFixed(1)}%</strong>
+                            <em className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</em>
+                          </button>
+                          <div className="rebalance-detail">
+                            <div><span>Current value</span><strong>{formatUSD(item.currentValue)}</strong></div>
+                            <div><span>Target value</span><strong>{formatUSD(item.targetValue)}</strong></div>
+                            <div><span>Delta value</span><strong className={Math.abs(item.deltaValue) < 0.005 ? "neutral-change" : item.deltaValue >= 0 ? "up" : "down"}>{Math.abs(item.deltaValue) < 0.005 ? "—" : `${item.deltaValue >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.deltaValue))}`}</strong></div>
+                            <div><span>Action</span><strong className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</strong></div>
+                          </div>
                         </div>
                       ))}
                     </div>
-                    <span className="agent-label">REBALANCE ACTIONS</span>
+                    <span className="agent-label">Rebalance actions</span>
                     <ul>
                       {portfolioPlan.actions.map((action) => <li key={action}>{action}</li>)}
                     </ul>
                     <small className="agent-note">{portfolioPlan.rebalanceNote} · {portfolioPlan.paperOnly ? "PAPER ONLY" : "REVIEW BEFORE USE"}</small>
+                    <button className="apply-agent-button" onClick={() => setPortfolioPreview(true)}>Preview target changes ↗</button>
+                    {portfolioPreview && (
+                      <div className="portfolio-preview" aria-label="Paper portfolio target preview">
+                        <div className="portfolio-preview-head"><span>Apply target preview</span><b>${Number(budget).toLocaleString()} paper budget</b></div>
+                        <p>Review the notional changes below. Your paper book stays unchanged until confirmation.</p>
+                        <div className="preview-table">
+                          <div className="preview-head"><span>Asset</span><span>Current</span><span>Target</span><span>Delta</span><span>Action</span></div>
+                          {previewRows.filter((item) => item.action !== "HOLD" || item.currentValue > 0).map((item) => (
+                            <div key={item.symbol}>
+                              <b>{item.symbol}</b>
+                              <strong>{formatUSD(item.currentValue)}</strong>
+                              <strong>{formatUSD(item.targetValue)}</strong>
+                              <strong className={Math.abs(item.deltaValue) < 0.005 ? "neutral-change" : item.deltaValue >= 0 ? "up" : "down"}>{Math.abs(item.deltaValue) < 0.005 ? "—" : `${item.deltaValue >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.deltaValue))}`}</strong>
+                              <em className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</em>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="preview-actions"><button className="preview-cancel" onClick={() => setPortfolioPreview(false)}>Cancel</button><button className="preview-confirm" onClick={applyPortfolioPlan}>Confirm apply ↗</button></div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             </div>
             <div className="simulator panel">
               <div className="lab-title">
-                <span>POSITION BUILDER</span>
-                <b>{wallet ? "BASE SEPOLIA / READY" : "NO WALLET REQUIRED"}</b>
+                <span>Position builder</span>
+                <b>{wallet ? "PAPER BASE SEPOLIA / 84532" : "PAPER ONLY / NO WALLET REQUIRED"}</b>
               </div>
               <div className="selected-token">
                 <span className={`asset-icon ${asset.tone}`}>
@@ -1055,7 +1631,7 @@ function App() {
                     {asset.name} / {asset.price}
                   </small>
                 </div>
-                <span className="token-network">BASE</span>
+                <span className="token-network">B20 / 8453</span>
                 {asset.contractAddress && (
                   <a
                     className="token-contract"
@@ -1068,11 +1644,11 @@ function App() {
                 )}
               </div>
               <div className="budget-header">
-                <span>PAPER BUDGET / USDC</span>
+                <span>Paper budget / USDC</span>
                 <output>${Number(budget).toLocaleString()}</output>
               </div>
               <div className="balance-line">
-                <span>AVAILABLE BALANCE</span>
+                <span>Available balance</span>
                 <b>{usdcBalance === null ? "Connect wallet to read USDC" : `${usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`}</b>
               </div>
               <div className="budget-presets">
@@ -1089,11 +1665,11 @@ function App() {
               ) : null}
               <div className="sim-result">
                 <div>
-                  <span>EST. UNITS</span>
+                  <span>Est. units</span>
                   <strong>{allocation}</strong>
                 </div>
                 <div>
-                  <span>NOTIONAL</span>
+                  <span>Notional</span>
                   <strong>${Number(budget).toLocaleString()}</strong>
                 </div>
               </div>
@@ -1117,23 +1693,95 @@ function App() {
               )}
               {notice && <p className="trade-notice">{notice}</p>}
               <p className="sim-note">
-                Records the thesis in StockLensRegistry on Base Sepolia.
+                Records the thesis in StockLensRegistry on Base Sepolia (84532).
                 Requires testnet gas.
               </p>
+            </div>
+          </section>
+          <section id="thesis-workspace" className="thesis-workspace-section">
+            <div className="history-heading">
+              <div>
+                <div className="kicker"><span>05</span> RESEARCH MEMORY</div>
+                <h2>Thesis <em>workspace.</em></h2>
+                <p>Turn a one-off signal into a trackable paper thesis. Save the context, conviction, target, and status before the market moves.</p>
+              </div>
+              <span className="workspace-count">{thesisWorkspace.length} SAVED THESIS</span>
+            </div>
+            <div className="thesis-workspace-grid">
+              <div className="thesis-composer panel">
+                <div className="workspace-panel-head"><span>New thesis</span><b>{selected} / {asset.price}</b></div>
+                <label>THESIS TITLE
+                  <input value={thesisTitle} onChange={(event) => setThesisTitle(event.target.value)} placeholder={`${selected} setup / e.g. momentum continuation`} />
+                </label>
+                <label>WHAT ARE YOU WATCHING?
+                  <textarea value={thesisNote} onChange={(event) => setThesisNote(event.target.value)} placeholder="Write the reason, catalyst, invalidation, or what would change your mind." rows="4" />
+                </label>
+                <div className="thesis-form-row">
+                  <label>CONVICTION
+                    <select value={thesisConviction} onChange={(event) => setThesisConviction(event.target.value)}>
+                      <option value="1">01 / exploratory</option><option value="2">02 / forming</option><option value="3">03 / measured</option><option value="4">04 / strong</option><option value="5">05 / highest</option>
+                    </select>
+                  </label>
+                  <div className="thesis-context"><span>MODEL CONTEXT</span><b>{displayedScore}/100 · {displayedRisk}</b><small>{modelLabel}</small></div>
+                </div>
+                <button className="workspace-save" type="button" onClick={saveThesis}>SAVE THESIS TO WORKSPACE <b>↗</b></button>
+                <small className="workspace-note">Saved locally in this browser. No order, custody, or financial advice.</small>
+              </div>
+              <div className="thesis-list-panel panel">
+              <div className="workspace-panel-head"><span>Active research</span><b>OUTCOME / STATUS</b></div>
+                {thesisWorkspace.length === 0 ? (
+                  <div className="workspace-empty"><strong>NO THESIS SAVED</strong><span>Select an asset, write what you believe, and keep the decision auditable.</span></div>
+                ) : (
+                  <div className="workspace-list">
+                    {thesisWorkspace.map((item) => {
+                      const outcome = thesisOutcome(item);
+                      return <article key={item.id} className="workspace-item">
+                        <div className="workspace-item-top"><b>{item.symbol}</b><span className={`workspace-status ${item.status.toLowerCase()}`}>{item.status}</span><time>{new Date(item.createdAt).toLocaleDateString([], { day: "2-digit", month: "short" })}</time></div>
+                        <h3>{item.title}</h3>
+                        <p>{item.note}</p>
+                        <div className="workspace-outcome"><span>OUTCOME SINCE ENTRY</span><strong className={outcome.change === null ? "" : outcome.change >= 0 ? "up" : "down"}>{outcome.change === null ? "NAV PENDING" : `${outcome.change >= 0 ? "+" : ""}${outcome.change.toFixed(2)}%`}</strong><small>{outcome.current === null ? "Awaiting current NAV" : `Entry ${outcome.entry.toFixed(2)} → Now ${outcome.current.toFixed(2)}`}</small></div>
+                        <div className="workspace-metrics"><span>SCORE <b>{item.score}/100</b></span><span>CONVICTION <b>{item.conviction}/5</b></span><span>TARGET <b>{item.target === null ? "—" : `${item.target}%`}</b></span><span>REVIEWS <b>{item.reviewCount || 0}</b></span></div>
+                        <div className="workspace-followup"><div><span>AGENT FOLLOW-UP</span><b>{followUpLoading[item.id] ? "CHECKING MARKET CONTEXT…" : followUps[item.id]?.nextAction || "Waiting for market context"}</b></div>{followUps[item.id] && <><small>{followUps[item.id].reviewWindow} · Confidence {followUps[item.id].confidence}/100</small><div className="followup-triggers">{followUps[item.id].triggers.map((trigger) => <em key={trigger}>{trigger}</em>)}</div></>}<button type="button" onClick={() => runFollowUp(item)}>{followUpLoading[item.id] ? "RUNNING…" : "RUN FOLLOW-UP ↗"}</button></div>
+                        <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); setNotice(`${item.symbol} thesis dibuka kembali di research terminal.`); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button><select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
+                      </article>;
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+          <section id="thesis-activity" className="thesis-activity-section">
+            <div className="history-heading">
+              <div>
+                <div className="kicker"><span>06</span> DECISION CONTROL</div>
+                <h2>Thesis <em>activity.</em></h2>
+                <p>See what changed, what needs attention, and why the agent is asking for a review.</p>
+              </div>
+              <span className="workspace-count">{thesisAlerts.length} ACTIVE ALERTS</span>
+            </div>
+            <div className="thesis-activity-grid">
+              <div className="alert-center panel">
+                <div className="workspace-panel-head"><span>Alert center</span><b>{thesisAlerts.length ? "ACTION REQUIRED" : "ALL CLEAR"}</b></div>
+                {thesisAlerts.length === 0 ? <div className="workspace-empty"><strong>NO ACTIVE ALERTS</strong><span>Follow-ups and outcome reviews will appear here when a thesis needs attention.</span></div> : <div className="alert-list">{thesisAlerts.map((alert) => <div key={alert.id} className={`alert-row ${alert.severity.toLowerCase()}`}><div><span>{alert.severity} / {alert.symbol}</span><b>{alert.title}</b><small>{alert.detail}</small></div><button type="button" onClick={() => dismissAlert(alert.id)}>ACKNOWLEDGE</button></div>)}</div>}
+              </div>
+              <div className="timeline-panel panel">
+                <div className="workspace-panel-head"><span>Thesis timeline</span><b>{timelineItems.length} EVENTS</b></div>
+                {timelineItems.length === 0 ? <div className="workspace-empty"><strong>NO EVENTS YET</strong><span>Save a thesis to start an auditable decision timeline.</span></div> : <div className="timeline-list">{timelineItems.map((event) => <div key={event.id} className="timeline-row"><i /><div><span>{event.symbol} · {event.type}</span><b>{event.detail}</b><small>{new Date(event.createdAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div></div>)}</div>}
+              </div>
             </div>
           </section>
           <section id="history" className="history-section">
             <div className="history-heading">
               <div>
                 <div className="kicker">
-                  <span>05</span> ONCHAIN RECORD
+                  <span>07</span> ONCHAIN RECORD
                 </div>
                 <h2>
                   Thesis <em>history.</em>
                 </h2>
                 <p>
-                  Research proofs read directly from StockLensRegistry on Base
-                  Sepolia.
+                  Research proofs read through the StockLens history proxy on
+                  Base Sepolia (84532). B20 NAV remains on Base mainnet (8453).
                 </p>
               </div>
               <a
@@ -1203,6 +1851,11 @@ function App() {
             </div>
           </section>
         </main>
+        <nav className="mobile-nav" aria-label="Mobile sections">
+          <a href="#watchlist"><b>Markets</b><small>Watchlist</small></a>
+          <a href="#lens"><b>AI</b><small>Research brief</small></a>
+          <a href="#simulate"><b>Portfolio</b><small>Paper lab</small></a>
+        </nav>
         <footer>
           <span>STOCKLENS / ONCHAIN RESEARCH TERMINAL</span>
           <span>BASE BUILD SPRINT / V0.2</span>

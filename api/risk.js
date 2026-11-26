@@ -1,6 +1,56 @@
+function compact(value, limit) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text
+}
+
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value))
+}
+
+function fallbackRisk(asset, reason = 'Vikey unavailable') {
+  const price = Number(String(asset.price || '').replace(/[$,]/g, ''))
+  const supply = Number(asset.totalSupply || 0)
+  const hours = asset.navUpdatedAt ? Math.max(0, (Date.now() - Date.parse(asset.navUpdatedAt)) / 36e5) : Infinity
+  const freshness = Number.isFinite(hours) ? Math.round(clamp(30 - hours * 2, 0, 30)) : 0
+  const supplySignal = Number.isFinite(price) && price > 0 && supply > 0 ? Math.round(clamp(Math.log10(Math.max(1, price * supply)) * 5, 0, 35)) : 0
+  const history = asset.dataQuality?.history === true ? 10 : 0
+  const change = asset.dataQuality?.change === true ? 5 : 0
+  const paused = Array.isArray(asset.pausedFeatures) && asset.pausedFeatures.length ? -25 : 0
+  const score = Math.round(clamp(35 + freshness + supplySignal + history + change + paused, 0, 100))
+  const risk = score >= 75 ? 'Lower' : score >= 55 ? 'Moderate' : score >= 35 ? 'Elevated' : 'High'
+  const confidence = Math.round(clamp(25 + (asset.dataQuality?.nav !== false ? 25 : 0) + (history ? 20 : 0) + (change ? 10 : 0) + (paused ? 0 : 10), 20, 90))
+  const missing = [
+    asset.dataQuality?.history === false ? 'NAV history' : '',
+    asset.dataQuality?.change === false ? 'price change' : '',
+    paused ? 'paused features' : '',
+  ].filter(Boolean)
+  return {
+    summary: compact(`${asset.symbol} receives a ${score}/100 ${risk.toLowerCase()}-risk signal from live NAV quality, freshness, supply and token status. ${missing.length ? `Missing ${missing.join(' and ')} limits trend confidence.` : 'The available reference fields are internally consistent.'}`, 300),
+    bull: asset.dataQuality?.nav !== false ? 'The asset has a live NAV reference and a verified B20 contract on Base mainnet.' : 'Contract identity remains available, but live NAV is not confirmed.',
+    bear: 'NAV is a reference value, not a bid, ask, or guaranteed fill price.',
+    risk,
+    score,
+    confidence,
+    catalysts: [
+      freshness > 0 ? `NAV print is fresh within the model freshness window (${Math.round(hours * 10) / 10}h old).` : 'A new NAV print would improve signal quality.',
+      history ? 'Persistent NAV history is available for trend comparison.' : 'A second NAV observation would improve trend analysis.',
+    ].map((item) => compact(item, 120)),
+    risks: [
+      missing.length ? `Model inputs missing: ${missing.join(', ')}.` : 'No bid, ask, holder, or redemption data is supplied.',
+      paused ? 'The token reports paused features; treat the reference as constrained.' : 'Model output can lag sudden market changes.',
+    ].map((item) => compact(item, 120)),
+    portfolioRationale: compact('Keep sizing proportional to data confidence; this is a paper-only research signal, not an execution recommendation.', 240),
+    source: 'StockLens deterministic risk model',
+    fallback: true,
+    method: 'NAV freshness + supply + history/change availability + paused-feature penalty',
+    scoreBasis: { freshness, supply: supplySignal, history, change, paused },
+    fallbackReason: compact(reason, 120),
+  }
+}
+
 export default async function handler(request, response) {
   if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed' })
-  if (!process.env.VIKEY_API_KEY) return response.status(503).json({ error: 'Vikey is not configured yet. Add VIKEY_API_KEY in Vercel.' })
+  if (String(request.headers['x-stocklens-country'] || '').toUpperCase() === 'US') return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
 
   try {
     const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
@@ -17,7 +67,13 @@ export default async function handler(request, response) {
       risk: String(asset.risk || 'Moderate').slice(0, 24),
       score: Number.isFinite(Number(asset.score)) ? Number(asset.score) : 50,
       volume: String(asset.volume || 'Unavailable').slice(0, 32),
+      navUpdatedAt: String(asset.navUpdatedAt || '').slice(0, 40),
+      totalSupply: Number.isFinite(Number(asset.totalSupply)) ? Number(asset.totalSupply) : null,
+      multiplier: Number.isFinite(Number(asset.multiplier)) ? Number(asset.multiplier) : null,
+      pausedFeatures: Array.isArray(asset.pausedFeatures) ? asset.pausedFeatures.slice(0, 6) : [],
+      dataQuality: asset.dataQuality || {},
     }
+    if (!process.env.VIKEY_API_KEY) return response.status(200).json(fallbackRisk(compactAsset, 'VIKEY_API_KEY is not configured'))
     const upstream = await fetch('https://api-plan.vikey.ai/v1/chat/completions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${process.env.VIKEY_API_KEY}`, 'Content-Type': 'application/json' },
@@ -26,21 +82,34 @@ export default async function handler(request, response) {
         max_tokens: 900,
         temperature: 0.2,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Low, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied market fields. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(compactAsset) }],
+        messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Lower, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied B20 NAV, supply, multiplier, pause, freshness and data-quality fields. If history or change is unavailable, say so explicitly and lower confidence. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(compactAsset) }],
       }),
     })
     if (!upstream.ok) {
       const detail = await upstream.text()
-      return response.status(502).json({ error: `Vikey request failed (${upstream.status})`, detail: detail.slice(0, 240) })
+      return response.status(200).json(fallbackRisk(compactAsset, `Vikey request failed (${upstream.status})`))
     }
     const payload = await upstream.json()
     const content = payload.choices?.[0]?.message?.content
     const result = typeof content === 'string' ? JSON.parse(content) : content
     if (!result?.summary || !result?.bull || !result?.bear || !Array.isArray(result?.catalysts) || !Array.isArray(result?.risks)) {
-      return response.status(502).json({ error: 'Vikey returned incomplete research JSON' })
+      return response.status(200).json(fallbackRisk(compactAsset, 'Vikey returned incomplete research JSON'))
     }
-    response.status(200).json(result)
+    const compactResult = {
+      ...result,
+      summary: compact(result.summary, 300),
+      bull: compact(result.bull, 190),
+      bear: compact(result.bear, 190),
+      catalysts: Array.isArray(result.catalysts) ? result.catalysts.slice(0, 2).map((item) => compact(item, 120)) : [],
+      risks: Array.isArray(result.risks) ? result.risks.slice(0, 2).map((item) => compact(item, 120)) : [],
+      portfolioRationale: compact(result.portfolioRationale, 240),
+      source: 'Vikey Research AI',
+      fallback: false,
+    }
+    response.status(200).json(compactResult)
   } catch (error) {
-    response.status(502).json({ error: error instanceof Error ? error.message : 'Unable to parse Vikey response' })
+    const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
+    const asset = input?.asset || {}
+    response.status(200).json(fallbackRisk(asset, error instanceof Error ? error.message : 'Unable to parse Vikey response'))
   }
 }

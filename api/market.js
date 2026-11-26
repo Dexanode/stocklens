@@ -1,9 +1,7 @@
-const registry = {
-  AAPLc: { name: 'Apple', tone: 'blue', color: '#2457ff' },
-  METAc: { name: 'Meta', tone: 'cyan', color: '#00b8c8' },
-  TSLAc: { name: 'Tesla', tone: 'coral', color: '#ff6b52' },
-  NVDAc: { name: 'NVIDIA', tone: 'violet', color: '#7959f5' },
-}
+const palette = [
+  ['blue', '#2457ff'], ['cyan', '#00a9ba'], ['coral', '#ff6b52'],
+  ['violet', '#7959f5'], ['green', '#1b8a5a'],
+]
 
 const fallback = {
   AAPLc: '0xb200000000000000000000C2e324d24d7eEcd1fb',
@@ -12,68 +10,79 @@ const fallback = {
   NVDAc: '0xb20000000000000000000078ee7ce2fE4908108C',
 }
 
-function flatPoints() {
-  return Array.from({ length: 16 }, (_, index) => `${index * 48 + 4},42`).join(' ')
+function toneFor(symbol) {
+  let hash = 0
+  for (const char of symbol) hash = (hash * 31 + char.charCodeAt(0)) % palette.length
+  return palette[hash]
 }
 
-function normalize(token) {
-  const symbol = token.symbol
-  const meta = registry[symbol]
-  if (!meta || !token.contract_address) return null
+function scoreFor(token, price) {
+  const supplyValue = Number(token.total_supply || 0) * price
+  const hours = token.nav_price_updated_at ? Math.max(0, (Date.now() - Date.parse(token.nav_price_updated_at)) / 36e5) : Infinity
+  const freshness = Number.isFinite(hours) ? Math.max(0, 30 - hours * 2) : 0
+  const supply = Math.min(35, Math.log10(Math.max(1, supplyValue)) * 5)
+  const paused = Array.isArray(token.paused_features) && token.paused_features.length ? -25 : 0
+  return Math.max(0, Math.min(100, Math.round(35 + freshness + supply + paused)))
+}
+
+function riskFor(score) {
+  if (score >= 75) return 'Lower'
+  if (score >= 55) return 'Moderate'
+  if (score >= 35) return 'Elevated'
+  return 'High'
+}
+
+function normalize(token, index) {
+  const symbol = String(token.symbol || '')
   const price = Number(token.nav_price)
+  if (!symbol || !token.contract_address || !Number.isFinite(price) || price <= 0) return null
+  const [tone, color] = toneFor(symbol)
+  const score = scoreFor(token, price)
+  const rawChange = token.change_24h ?? token.nav_change_24h ?? token.price_change_24h
+  const change = Number.isFinite(Number(rawChange)) ? `${Number(rawChange).toFixed(2)}%` : 'N/A'
+  const updatedAt = token.nav_price_updated_at || null
   return [symbol, {
-    name: token.name || meta.name,
-    ticker: symbol,
-    sector: 'Tokenized equity / B20',
-    price: Number.isFinite(price) ? `$${price.toFixed(2)}` : '—',
-    change: '—',
-    tone: meta.tone,
-    risk: 'Moderate',
-    score: 50,
-    volume: 'B20 NAV reference',
-    time: token.nav_price_updated_at ? new Date(token.nav_price_updated_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : 'Reference pending',
-    bull: 'The asset is identified by a verified Coinbase B20 contract on Base.',
-    bear: 'NAV is a reference value, not a bid, ask, or guaranteed fill price.',
-    color: meta.color,
-    points: flatPoints(),
-    candles: [],
-    contractAddress: token.contract_address,
-    chainId: 8453,
-    dataSource: 'Coinbase Tokenized Stocks API',
-    navUpdatedAt: token.nav_price_updated_at || null,
+    name: token.name || symbol, ticker: symbol, sector: 'Tokenized equity / B20',
+    price: `$${price.toFixed(2)}`, change, tone, risk: riskFor(score), score,
+    volume: Number.isFinite(Number(token.total_supply)) ? `${Number(token.total_supply).toLocaleString()} supply` : 'Supply unavailable',
+    time: updatedAt ? new Date(updatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'NAV time unavailable',
+    bull: 'The asset has a live NAV reference and a verified B20 contract on Base mainnet.',
+    bear: token.paused_features?.length ? 'The token reports paused features; treat the reference as constrained.' : 'NAV is a reference value, not a bid, ask, or guaranteed fill price.',
+    color, points: '', candles: [], navHistory: Array.isArray(token.nav_history) ? token.nav_history : [],
+    contractAddress: token.contract_address, chainId: 8453, dataSource: 'Coinbase Tokenized Stocks API',
+    navUpdatedAt: updatedAt, totalSupply: token.total_supply ?? null, multiplier: token.multiplier ?? null,
+    pausedFeatures: token.paused_features || [],
+    dataQuality: { nav: true, history: Array.isArray(token.nav_history) && token.nav_history.length > 1, change: Number.isFinite(Number(rawChange)) }, index,
   }]
+}
+
+async function fetchAllTokens() {
+  const tokens = []
+  let pageToken = ''
+  for (let page = 0; page < 5; page += 1) {
+    const query = `?include_zero_supply=false${pageToken ? `&page_token=${encodeURIComponent(pageToken)}` : ''}`
+    const result = await fetch(`https://api.coinbase.com/v1/tokenized-stocks${query}`, { signal: AbortSignal.timeout(8000) })
+    if (!result.ok) throw new Error(`tokenized_stocks_${result.status}`)
+    const payload = await result.json()
+    tokens.push(...(payload.tokens || []))
+    pageToken = payload.next_page_token || ''
+    if (!pageToken) break
+  }
+  return tokens
 }
 
 export default async function handler(_request, response) {
   try {
-    const upstream = await fetch('https://api.coinbase.com/v1/tokenized-stocks?include_zero_supply=false', { signal: AbortSignal.timeout(8000) })
-    if (!upstream.ok) throw new Error(`tokenized_stocks_${upstream.status}`)
-    const payload = await upstream.json()
-    const data = Object.fromEntries((payload.tokens || []).map(normalize).filter(Boolean))
+    const tokens = await fetchAllTokens()
+    const data = Object.fromEntries(tokens.map(normalize).filter(Boolean))
     response.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=300')
-    return response.status(200).json({ source: 'Coinbase Tokenized Stocks API', chainId: 8453, data })
+    return response.status(200).json({ source: 'Coinbase Tokenized Stocks API', chainId: 8453, data, count: Object.keys(data).length })
   } catch (error) {
-    const data = Object.fromEntries(Object.entries(registry).map(([symbol, meta]) => [symbol, {
-      name: meta.name,
-      ticker: symbol,
-      sector: 'Tokenized equity / B20',
-      price: '—',
-      change: '—',
-      tone: meta.tone,
-      risk: 'Unknown',
-      score: 50,
-      volume: 'Reference unavailable',
-      time: 'Registry fallback',
-      bull: 'Verified B20 contract identity is available on Base mainnet.',
-      bear: 'Live NAV is temporarily unavailable; no price claim is shown.',
-      color: meta.color,
-      points: flatPoints(),
-      candles: [],
-      contractAddress: fallback[symbol],
-      chainId: 8453,
-      dataSource: 'Base B20 registry fallback',
-    }]))
+    const data = Object.fromEntries(Object.entries(fallback).map(([symbol, contractAddress], index) => {
+      const [tone, color] = toneFor(symbol)
+      return [symbol, { name: symbol.replace('c', ''), ticker: symbol, sector: 'Tokenized equity / B20', price: '—', change: 'N/A', tone, risk: 'Unknown', score: null, volume: 'Reference unavailable', time: 'Registry fallback', bull: 'Verified B20 contract identity is available on Base mainnet.', bear: 'Live NAV is temporarily unavailable; no price claim is shown.', color, points: '', candles: [], navHistory: [], contractAddress, chainId: 8453, dataSource: 'Base B20 registry fallback', dataQuality: { nav: false, history: false, change: false }, index }]
+    }))
     response.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=60')
-    return response.status(200).json({ source: 'Base B20 registry fallback', chainId: 8453, warning: error.message, data })
+    return response.status(200).json({ source: 'Base B20 registry fallback', chainId: 8453, warning: error.message, data, count: Object.keys(data).length })
   }
 }
