@@ -1,7 +1,11 @@
 import { list, put } from '@vercel/blob'
 import { fetchLiveNav } from './lib/coinbase.js'
+import { blobPath } from './lib/storage.js'
 
-const PATH = 'stocklens/nav-history.json'
+// Namespaced per environment (see api/lib/storage.js): production keeps
+// stocklens/nav-history.json; preview/development write under
+// stocklens/<env>/nav-history.json and can never touch production data.
+const PATH = blobPath('stocklens/nav-history.json')
 const MAX_POINTS = 260
 const MAX_AGE = 366 * 864e5
 // B20 universe served by the frontend, verified live 26 Nov 2026:
