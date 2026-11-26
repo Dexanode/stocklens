@@ -1,22 +1,3 @@
-MallocNanoZone=0
-NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S=461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f
-NO_COLOR=1
-NoDefaultCurrentDirectoryInExePath=1
-OLDPWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
-OPENBOT_AGENT_PROCESS=1
-PAGER=cat
-PATH=$'/Applications/Wine \nStaging.app/Contents/Resources/wine/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Users/dexa/Library/Application Support/OpenBot/provider-runtimes/codex/darwin-arm64/0.172.0/codex-path:/Users/dexa/.codex/tmp/arg0-macos/codex-arg00VuJF4:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/dexa/.cargo/bin:/Users/dexa/Library/Python/3.9/bin:/Users/dexa/.foundry/bin:/Users/dexa/tizen-studio/tools/ide/bin:/Users/dexa/tizen-studio/tools'
-PWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
-SHELL=/bin/zsh
-SHLVL=1
-SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.LAlBoNYgeX/Listeners
-TERM=dumb
-TMPDIR=/var/folders/93/yn8h0ylj4tn60nmq57hqmvrm0000gn/T/
-USER=dexa
-XPC_FLAGS=0x0
-XPC_SERVICE_NAME=application.app.openbot.desktop.164698546.164698552
-__CFBundleIdentifier=app.openbot.desktop
-__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
 function compact(value, limit) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text
