@@ -411,7 +411,12 @@ function App() {
   const [usdcBalance, setUsdcBalance] = useState(null);
   const [isSimulating, setIsSimulating] = useState(false);
   const [wallet, setWallet] = useState("");
-  const [portfolio, setPortfolio] = useState([]);
+  const [portfolio, setPortfolio] = useState(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem("stocklens-paper-portfolio-v1") || "[]");
+      return Array.isArray(saved) ? saved.filter((item) => item && typeof item.symbol === "string" && Number.isFinite(Number(item.units)) && Number.isFinite(Number(item.notional))) : [];
+    } catch { return []; }
+  });
   const [notice, setNotice] = useState("");
   const [txHash, setTxHash] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -454,7 +459,7 @@ function App() {
   const [dismissedAlerts, setDismissedAlerts] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem("stocklens-thesis-alerts-v1") || "{}"); } catch { return {}; }
   });
-  const { address } = useAccount();
+  const { address, connector } = useAccount();
   const asset = marketAssets[selected];
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -579,6 +584,10 @@ function App() {
     });
   }, [portfolioPlan, portfolioMetrics, rebalanceRows, targetPortfolio]);
   const largestMove = previewRows.reduce((best, row) => !best || Math.abs(row.deltaValue) > Math.abs(best.deltaValue) ? row : best, null);
+
+  useEffect(() => {
+    try { window.localStorage.setItem("stocklens-paper-portfolio-v1", JSON.stringify(portfolio)); } catch { setNotice("Paper portfolio could not be saved in this browser."); }
+  }, [portfolio]);
 
   useEffect(() => {
     setWallet(address || "");
@@ -794,15 +803,32 @@ function App() {
   }
 
   async function proveOnchain() {
-    if (!window.ethereum || !wallet || wallet === "preview") {
+    if ((!connector && !window.ethereum) || !wallet || wallet === "preview") {
       setNotice("Connect a browser wallet first to write on Base Sepolia.");
       return;
     }
     setIsSending(true);
     setNotice("Confirm the Base Sepolia proof transaction in your wallet…");
     try {
-      const provider = new BrowserProvider(window.ethereum);
+      const walletProvider = connector ? await connector.getProvider() : window.ethereum;
+      if (!walletProvider || Number(await walletProvider.request({ method: "eth_chainId" })) !== 84532) {
+        setNotice("Switch your connected wallet to Base Sepolia before recording.");
+        return;
+      }
+      const provider = new BrowserProvider(walletProvider);
       const signer = await provider.getSigner();
+      if ((await signer.getAddress()).toLowerCase() !== wallet.toLowerCase()) {
+        setNotice("Connected wallet account changed. Reconnect before recording.");
+        return;
+      }
+      if (await provider.getCode(REGISTRY_ADDRESS) === "0x") {
+        setNotice("StockLens registry is unavailable on this network.");
+        return;
+      }
+      if (Number(await walletProvider.request({ method: "eth_chainId" })) !== 84532) {
+        setNotice("Switch your connected wallet to Base Sepolia before recording.");
+        return;
+      }
       const registry = new Contract(REGISTRY_ADDRESS, REGISTRY_ABI, signer);
       const priceValue = Number(asset.price.replace(/[$,]/g, ""));
       if (!Number.isFinite(priceValue)) {
@@ -822,8 +848,12 @@ function App() {
       setNotice(
         "Contract call submitted. Waiting for Base Sepolia confirmation…",
       );
-      await transaction.wait();
-      setNotice("Thesis recorded in StockLensRegistry on Base Sepolia.");
+      const receipt = await transaction.wait();
+      const recorded = receipt?.logs.some((log) => {
+        if (log.address.toLowerCase() !== REGISTRY_ADDRESS.toLowerCase()) return false;
+        try { return registry.interface.parseLog(log)?.name === "ThesisRecorded"; } catch { return false; }
+      });
+      setNotice(recorded ? "Thesis recorded in StockLensRegistry on Base Sepolia." : "Transaction confirmed, but the thesis record could not be verified.");
     } catch (error) {
       setNotice(
         error?.shortMessage || "Contract transaction cancelled or rejected.",
@@ -1277,6 +1307,20 @@ function App() {
           </div>
         </header>
         <main>
+          {judgeStep > 0 && (
+            <section className="judge-demo" aria-label="Demo progress" aria-live="polite">
+              <div className="judge-demo-head"><div><span className="kicker">Paper-only walkthrough</span><strong>Explore StockLens</strong></div></div>
+              <div className="judge-steps">
+                {["Select asset", "Read NAV", "Build allocation", "Review plan"].map((label, index) => (
+                  <div key={label} className={judgeStep === index + 1 ? "active" : ""} style={{ padding: "12px", fontSize: "12px" }}>
+                    {label} {judgeStep > index + 1 ? "✓" : ""}
+                  </div>
+                ))}
+              </div>
+              <div className="judge-demo-body"><p>{judgeRunning ? "Preparing the portfolio plan…" : judgeStep === 4 ? "Review the proposed allocation in Paper lab." : "The plan could not be prepared. Start the demo again."}</p></div>
+              {judgeStep === 4 && <div className="judge-demo-actions"><a className="judge-primary" href="#simulate">View portfolio plan ↗</a></div>}
+            </section>
+          )}
           <div id="overview" />
           <section id="watchlist" className="research-grid">
             <div className="watchlist-panel panel">
