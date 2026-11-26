@@ -291,7 +291,7 @@ function CandleChart({ candles, color }) {
   return (
     <g>
       {candles.map((candle, index) => {
-        const x = 4 + index * step;
+        const x = candles.length === 1 ? 718 : 4 + index * step;
         const openY = y(candle.open);
         const closeY = y(candle.close);
         const top = Math.min(openY, closeY);
@@ -1426,7 +1426,7 @@ function App() {
                     style={{ background: asset.color }}
                   />{" "}
                   {chartType === "candles"
-                    ? chartCandles.length ? "OHLC / NAV-derived candles" : "OHLC / awaiting NAV history"
+                    ? chartCandles.length === 1 ? "1 daily candle / more days needed" : chartCandles.length ? "Daily OHLC / NAV snapshots" : "OHLC / awaiting NAV history"
                     : "B20 NAV reference"}
                 </span>
                 <span>
