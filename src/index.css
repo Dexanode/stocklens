@@ -172,3 +172,6 @@ html[data-theme="dark"] .wallet-button,html[data-theme="dark"] .theme-toggle,htm
 @media(max-width:900px){.asset-list{max-height:430px}.research-grid{align-items:start}.tape{margin-top:40px}}
 
 .brand-logo-dark{display:none}html[data-theme="dark"] .brand-logo-light{display:none}html[data-theme="dark"] .brand-logo-dark{display:block}
+
+.chart-y{top:auto;bottom:34px;height:215px;transform:translateY(0.5em)}
+@media(max-width:1000px){.chart-y{height:170px}}
