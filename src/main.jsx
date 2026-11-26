@@ -13,6 +13,7 @@ import { baseSepolia } from "wagmi/chains";
 import "./index.css";
 import "./b20.css";
 import "./market-layout.css";
+import { resolveShareId } from "./thesis-share.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -911,6 +912,29 @@ function App() {
     }, 1350);
   }
 
+  // Edit-token ownership (PR #1 rev 3): the server returns one editToken
+  // per thesis, only in the POST response that creates it. It is kept
+  // here, in a localStorage map keyed by thesis id — never in the thesis
+  // object itself, never in a share link, and never sent to the server
+  // except as the x-edit-token header on PUT. A thesis whose token this
+  // browser does not hold cannot be edited from here (server: 401, or
+  // 410 for legacy theses created before tokens existed).
+  const EDIT_TOKENS_KEY = "stocklens-thesis-edit-tokens-v1";
+  function loadEditTokens() {
+    try { return JSON.parse(window.localStorage.getItem(EDIT_TOKENS_KEY) || "{}") || {}; } catch { return {}; }
+  }
+  function storeEditToken(id, token) {
+    if (!id || !token) return;
+    try {
+      const tokens = loadEditTokens();
+      tokens[id] = token;
+      window.localStorage.setItem(EDIT_TOKENS_KEY, JSON.stringify(tokens));
+    } catch { /* without the token the thesis becomes read-only on this device */ }
+  }
+  function editTokenFor(id) {
+    return loadEditTokens()[id] || "";
+  }
+
   async function saveThesis() {
     const next = {
       id: `${selected}-${Date.now()}`,
@@ -931,17 +955,27 @@ function App() {
       reviewCount: 0,
     };
     let saved = next;
+    let savedPayload = null;
     try {
       const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(next) });
       const payload = response.ok ? await response.json() : null;
-      if (payload?.thesis) saved = payload.thesis;
+      savedPayload = payload;
+      if (payload?.thesis) {
+        saved = payload.thesis;
+        if (payload.editToken) storeEditToken(saved.id, payload.editToken);
+      }
     } catch { /* local cache remains available when persistence is offline */ }
     setThesisWorkspace((items) => [saved, ...items.filter((item) => item.id !== saved.id)].slice(0, 30));
     recordThesisEvent(saved.id, saved.symbol, "THESIS CREATED", saved.title);
     setThesisTitle("");
     setThesisNote("");
     runFollowUp(saved);
-    setNotice(`${selected} thesis disimpan di workspace ${saved.id?.startsWith("th_") ? "server-side" : "local"}. Paper-only dan bisa direview ulang kapan saja.`);
+    // Rev 7: a 200 means put() succeeded — the record IS stored — but
+    // `pendingPropagation` means a fresh re-read had not seen it yet
+    // (Blob reads lag writes ~10–25 s). Say so instead of implying it
+    // is already visible server-side.
+    const savedNote = `${selected} thesis disimpan di workspace ${saved.id?.startsWith("th_") ? "server-side" : "local"}. Paper-only dan bisa direview ulang kapan saja.`;
+    setNotice(savedPayload?.pendingPropagation ? `${savedNote} Server belum menampilkan perubahan ini — akan terkonfirmasi saat refresh.` : savedNote);
   }
 
   function updateThesisStatus(id, status) {
@@ -949,13 +983,31 @@ function App() {
     const next = current ? { ...current, status, updatedAt: new Date().toISOString() } : null;
     if (!next) return;
     setThesisWorkspace((items) => items.map((item) => item.id === id ? next : item));
-    persistThesis(next);
+    persistThesis(next).then((result) => {
+      if (result?.status === 410) setNotice(`${next.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
+      else if (result?.status === 503) setNotice(`${next.symbol} status gagal disimpan di server (${result?.code || "store_unavailable"}) — perubahan tersimpan lokal, coba lagi sebentar lagi.`);
+      else if (result?.thesis) {
+        setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
+        if (result?.pendingPropagation) setNotice(`${next.symbol} status tersimpan di server, tapi belum terkonfirmasi terlihat — akan terkonfirmasi saat refresh.`);
+      }
+    });
     recordThesisEvent(next.id, next.symbol, `STATUS → ${status}`, `Thesis status changed from the workspace.`);
   }
 
   async function persistThesis(item) {
-    if (!item?.id?.startsWith("th_")) return;
-    try { await fetch("/api/thesis", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) }); } catch { /* local state remains available */ }
+    if (!item?.id?.startsWith("th_")) return { status: 0 };
+    try {
+      const response = await fetch("/api/thesis", { method: "PUT", headers: { "Content-Type": "application/json", "x-edit-token": editTokenFor(item.id) }, body: JSON.stringify(item) });
+      // Rev 7: return the whole result. On success (200) the body
+      // carries the record as written — a successful put() IS the write
+      // — plus `verified` / `pendingPropagation`: whether a fresh
+      // re-read has already seen it. `pendingPropagation` is a normal
+      // outcome under Blob read lag, not a failure; callers adopt the
+      // record and say it will confirm on refresh. A 503 now means a
+      // real failure (put() threw, or the pre-write read failed).
+      const payload = await response.json().catch(() => null);
+      return { status: response.status, thesis: payload?.thesis || null, code: payload?.code || null, error: payload?.error || null, verified: payload?.verified ?? null, pendingPropagation: payload?.pendingPropagation || false };
+    } catch { /* local state remains available */ return { status: 0 }; }
   }
 
   async function runFollowUp(item) {
@@ -982,10 +1034,41 @@ function App() {
       updatedAt: new Date().toISOString(),
     };
     setThesisWorkspace((items) => items.map((entry) => entry.id === id ? next : entry));
-    persistThesis(next);
+    persistThesis(next).then((result) => {
+      if (result?.status === 410) setNotice(`${item.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
+      else if (result?.status === 503) setNotice(`${item.symbol} review gagal disimpan di server (${result?.code || "store_unavailable"}) — perubahan tersimpan lokal, coba lagi sebentar lagi.`);
+      else if (result?.thesis) {
+        setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
+        if (result?.pendingPropagation) setNotice(`${item.symbol} review tersimpan di server, tapi belum terkonfirmasi terlihat — akan terkonfirmasi saat refresh.`);
+      }
+    });
     runFollowUp(next);
     recordThesisEvent(next.id, next.symbol, "OUTCOME REVIEWED", "NAV snapshot and agent follow-up refreshed.");
     setNotice(`${item.symbol} outcome di-review dengan data NAV terbaru.`);
+  }
+
+  async function duplicateThesis(item) {
+    const copy = { ...item };
+    delete copy.id;
+    delete copy.editable;
+    copy.title = `${item.title} (copy)`;
+    copy.createdAt = new Date().toISOString();
+    copy.updatedAt = new Date().toISOString();
+    copy.status = "OPEN";
+    try {
+      const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(copy) });
+      const payload = response.ok ? await response.json() : null;
+      if (payload?.thesis) {
+        if (payload.editToken) storeEditToken(payload.thesis.id, payload.editToken);
+        setThesisWorkspace((items) => [payload.thesis, ...items].slice(0, 30));
+        recordThesisEvent(payload.thesis.id, payload.thesis.symbol, "THESIS DUPLICATED", `Duplicated from legacy thesis ${item.id}.`);
+        setNotice(`${item.symbol} thesis diduplikasi sebagai thesis baru yang bisa diedit.`);
+        return;
+      }
+    } catch { /* fall through to a local-only duplicate below */ }
+    const local = { ...copy, id: `${item.symbol}-${Date.now()}` };
+    setThesisWorkspace((items) => [local, ...items].slice(0, 30));
+    setNotice(`${item.symbol} thesis diduplikasi secara lokal (server tidak terjangkau).`);
   }
 
   function recordThesisEvent(thesisId, symbol, type, detail) {
@@ -997,16 +1080,20 @@ function App() {
   }
 
   async function shareThesis(item) {
-    let serverId = item.id?.startsWith("th_") ? item.id : "";
-    if (!serverId) {
-      try {
-        const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) });
-        const payload = response.ok ? await response.json() : null;
-        if (payload?.thesis) {
-          serverId = payload.thesis.id;
-          setThesisWorkspace((items) => items.map((entry) => entry.id === item.id ? payload.thesis : entry));
-        }
-      } catch { /* fall back to local payload share below */ }
+    // Rev 7: never put an unverified id in a share link. resolveShareId
+    // (src/thesis-share.js) GET-verifies the id with retries first — a
+    // single 404 proves nothing while Blob reads lag writes ~10–25 s —
+    // then checks the list for a content match before re-creating, so a
+    // stale verify can no longer mint a duplicate. When the server is
+    // unreachable it returns "" and we fall back to the ?thesis= JSON
+    // link, which always works. saveThesis already adopts the server id
+    // from the POST response, so a freshly saved thesis links correctly;
+    // this covers the local-only and orphan-id paths.
+    const resolved = await resolveShareId(item, fetch);
+    const serverId = resolved.serverId;
+    if (resolved.thesis) {
+      if (resolved.editToken) storeEditToken(resolved.thesis.id, resolved.editToken);
+      setThesisWorkspace((items) => items.map((entry) => entry.id === item.id ? resolved.thesis : entry));
     }
     const outcome = thesisOutcome(item);
     const payload = {
@@ -1476,6 +1563,7 @@ function App() {
                   <b>{portfolioPlan ? portfolioPlan.regime : "READY"}</b>
                 </div>
                 {portfolioPlan && <div className="agent-meta"><span>Confidence <b>{portfolioPlan.confidence ?? "—"}/100</b></span><span>Universe <b>{Object.keys(marketAssets).length} B20</b></span></div>}
+                {portfolioPlan && <p role="status">Source: {portfolioPlan.source || "Unknown"}{portfolioPlan.fallback ? ` · Fallback reason: ${portfolioPlan.fallbackReason || "Unavailable"}` : ""}</p>}
                 <p>
                   Baca seluruh B20 watchlist dan paper holdings untuk menyusun target allocation serta langkah rebalance.
                 </p>
@@ -1664,7 +1752,7 @@ function App() {
                         <div className="workspace-outcome"><span>OUTCOME SINCE ENTRY</span><strong className={outcome.change === null ? "" : outcome.change >= 0 ? "up" : "down"}>{outcome.change === null ? "NAV PENDING" : `${outcome.change >= 0 ? "+" : ""}${outcome.change.toFixed(2)}%`}</strong><small>{outcome.current === null ? "Awaiting current NAV" : `Entry ${outcome.entry.toFixed(2)} → Now ${outcome.current.toFixed(2)}`}</small></div>
                         <div className="workspace-metrics"><span>SCORE <b>{item.score}/100</b></span><span>CONVICTION <b>{item.conviction}/5</b></span><span>TARGET <b>{item.target === null ? "—" : `${item.target}%`}</b></span><span>REVIEWS <b>{item.reviewCount || 0}</b></span></div>
                         <div className="workspace-followup"><div><span>AGENT FOLLOW-UP</span><b>{followUpLoading[item.id] ? "CHECKING MARKET CONTEXT…" : followUps[item.id]?.nextAction || "Waiting for market context"}</b></div>{followUps[item.id] && <><small>{followUps[item.id].reviewWindow} · Confidence {followUps[item.id].confidence}/100</small><div className="followup-triggers">{followUps[item.id].triggers.map((trigger) => <em key={trigger}>{trigger}</em>)}</div></>}<button type="button" onClick={() => runFollowUp(item)}>{followUpLoading[item.id] ? "RUNNING…" : "RUN FOLLOW-UP ↗"}</button></div>
-                        <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); document.getElementById("watchlist")?.scrollIntoView({ behavior: "smooth" }); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button><select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
+                        <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); document.getElementById("watchlist")?.scrollIntoView({ behavior: "smooth" }); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button>{item.id?.startsWith("th_") && !editTokenFor(item.id) ? <button type="button" onClick={() => duplicateThesis(item)}>DUPLICATE AS NEW ↗</button> : null}<select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
                         {shareLink?.id === item.id && <p role="status">Share link ready: <a href={shareLink.url} target="_blank" rel="noreferrer">Open shared thesis ↗</a> <input aria-label="Shareable thesis link" value={shareLink.url} readOnly onFocus={(event) => event.target.select()} /></p>}
                       </article>;
                     })}

@@ -1,3 +1,11 @@
+import { isBlockedCountry } from './lib/geo.js'
+import { checkRateLimit } from './lib/rate-limit.js'
+
+// Best-effort per-IP limit (in-memory, per serverless instance — see
+// api/lib/rate-limit.js). 30 req/min/IP keeps normal research use working
+// while stopping a single IP from draining VIKEY_API_KEY (audit C-2).
+const RATE_LIMIT = { limit: 30, windowMs: 60_000, keyPrefix: 'risk' }
+
 function compact(value, limit) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text
@@ -61,10 +69,28 @@ function fallbackRisk(asset, reason = 'Vikey unavailable') {
 
 export default async function handler(request, response) {
   if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed' })
-  if (String(request.headers['x-stocklens-country'] || '').toUpperCase() === 'US') return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
+  // Geo-block enforced from the Vercel IP header, not the self-declared
+  // client header (audit C-3). See api/lib/geo.js.
+  if (isBlockedCountry(request).blocked) return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
+  const rate = checkRateLimit(request, RATE_LIMIT)
+  response.setHeader('X-RateLimit-Remaining', String(Math.max(0, rate.remaining)))
+  response.setHeader('X-RateLimit-Reset', String(Math.ceil(rate.resetAt / 1000)))
+  if (rate.limited) {
+    response.setHeader('Retry-After', String(rate.retryAfterSeconds))
+    return response.status(429).json({ error: 'Rate limit exceeded. Try again shortly.', retryAfterSeconds: rate.retryAfterSeconds })
+  }
+
+  // Parse the body once, up front. The old handler re-parsed it inside the
+  // catch block, so an invalid-JSON body threw again inside catch and the
+  // client got a bare 500 with no JSON (audit M-5).
+  let input = null
+  try {
+    input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
+  } catch {
+    return response.status(400).json({ error: 'Request body is not valid JSON' })
+  }
 
   try {
-    const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
     const asset = input?.asset
     if (!asset?.symbol || !asset?.price || !asset?.change) {
       return response.status(400).json({ error: 'Asset payload requires symbol, price, and change' })
@@ -95,6 +121,12 @@ export default async function handler(request, response) {
         response_format: { type: 'json_object' },
         messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Lower, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied B20 NAV, supply, multiplier, pause, freshness and data-quality fields. If history or change is unavailable, say so explicitly and lower confidence. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(compactAsset) }],
       }),
+      // Bound the upstream call so a slow Vikey cannot hang the function
+      // into a Vercel timeout (audit C-2). 15s: the single-asset brief is
+      // quick, but the original 8s cap risked needless fallbacks on slow
+      // upstreams. vercel.json allows 30s for this route, so 15s leaves
+      // room for the response to be parsed and returned.
+      signal: AbortSignal.timeout(15000),
     })
     if (!upstream.ok) {
       const detail = await upstream.text()
@@ -129,7 +161,6 @@ export default async function handler(request, response) {
     }
     response.status(200).json(compactResult)
   } catch (error) {
-    const input = typeof request.body === 'string' ? JSON.parse(request.body) : request.body
     const asset = input?.asset || {}
     response.status(200).json(fallbackRisk(asset, error instanceof Error ? error.message : 'Unable to parse Vikey response'))
   }

@@ -1,3 +1,5 @@
+import { isBlockedCountry } from './lib/geo.js'
+
 const palette = [
   ['blue', '#2457ff'], ['cyan', '#00a9ba'], ['coral', '#ff6b52'],
   ['violet', '#7959f5'], ['green', '#1b8a5a'],
@@ -71,7 +73,12 @@ async function fetchAllTokens() {
   return tokens
 }
 
-export default async function handler(_request, response) {
+export default async function handler(request, response) {
+  // Geo-block enforced from the Vercel IP header, not the self-declared
+  // client header (audit C-3). Previously this route had no geo check at all.
+  // Note: on a 451 the frontend falls back to its local demo-data mode
+  // (hardcoded, no live NAV) — see PR notes.
+  if (isBlockedCountry(request).blocked) return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
   try {
     const tokens = await fetchAllTokens()
     const data = Object.fromEntries(tokens.map(normalize).filter(Boolean))
