@@ -6,6 +6,7 @@ test('SDK read uses the Blob metadata ETag from the same uncached content', asyn
   const result = await readBlobJson({
     path: 'test', token: 'test',
     list: async () => ({ blobs: [{ pathname: 'test', url: 'https://example.test/blob' }] }),
+    headImpl: async () => ({ etag: 'blob-version' }),
     getImpl: async (_path, options) => {
       assert.equal(options.useCache, false)
       return { statusCode: 200, stream: new Response('[1,2]').body, blob: { etag: 'blob-version' }, headers: new Headers({ etag: 'different-cdn-etag' }) }

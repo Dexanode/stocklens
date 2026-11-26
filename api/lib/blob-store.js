@@ -78,6 +78,7 @@ function withCacheBust(url) {
 export async function readBlobJson({
   list,
   getImpl,
+  headImpl,
   fetchImpl = fetch,
   token,
   path,
@@ -102,13 +103,20 @@ export async function readBlobJson({
 
   if (getImpl) {
     let result
+    let before
+    let after
     try {
+      before = await headImpl(path, { token })
       result = await getImpl(path, { access: 'private', token, useCache: false })
+      after = await headImpl(path, { token })
     } catch (error) {
       throw new BlobReadError(unavailableCode, 503, `Blob read failed for ${path}: ${error instanceof Error ? error.message : String(error)}`)
     }
     if (!result || result.statusCode !== 200 || !result.stream) {
       throw new BlobReadError(unavailableCode, 503, `Listed blob could not be read for ${path}.`)
+    }
+    if (!before?.etag || before.etag !== after?.etag) {
+      throw new BlobReadError(unavailableCode, 503, `Blob version changed while reading ${path}; retry.`)
     }
     let payload
     try {
@@ -119,7 +127,7 @@ export async function readBlobJson({
     if (validate && !validate(payload)) {
       throw new BlobReadError(corruptCode, 500, `Blob content for ${path} failed shape validation.`)
     }
-    return { found: true, value: payload, etag: result.blob?.etag || null }
+    return { found: true, value: payload, etag: before.etag }
   }
 
   let response
@@ -248,6 +256,7 @@ function fresher(a, b) {
 export async function readModifyWrite({
   list,
   getImpl,
+  headImpl,
   put,
   fetchImpl = fetch,
   token,
@@ -265,7 +274,7 @@ export async function readModifyWrite({
   freshness = defaultFreshness,
   verifyDelaysMs = [0, 500, 1500, 3500],
 }) {
-  const readOpts = { list, getImpl, fetchImpl, token, path, validate, unavailableCode, corruptCode }
+  const readOpts = { list, getImpl, headImpl, fetchImpl, token, path, validate, unavailableCode, corruptCode }
 
   // 1. Pre-write read, repeated: keep the freshest snapshot seen.
   // A throwing read is retried; only if every attempt fails does the

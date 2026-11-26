@@ -1,4 +1,4 @@
-import { list, get, put } from '@vercel/blob'
+import { list, get, head, put } from '@vercel/blob'
 import { blobPath } from './lib/storage.js'
 import { readBlobJson, readModifyWrite, BlobReadError, BlobWriteError, FailRequest } from './lib/blob-store.js'
 
@@ -13,7 +13,7 @@ const MAX_ITEMS = 500
 // answers a BlobReadError with an error status BEFORE any put() is called.
 async function readTheses(token) {
   const { found, value } = await readBlobJson({
-    list, getImpl: get,
+    list, getImpl: get, headImpl: head,
     token,
     path: PATH,
     validate: Array.isArray,
@@ -192,7 +192,7 @@ export default async function handler(request, response) {
       let writeVerified = false
       try {
         ({ value: written, verified: writeVerified } = await readModifyWrite({
-          list, getImpl: get, put, token, path: PATH,
+          list, getImpl: get, headImpl: head, put, token, path: PATH,
           validate: Array.isArray, empty: [],
           unavailableCode: 'thesis_store_unavailable',
           corruptCode: 'thesis_store_corrupt',
@@ -235,7 +235,7 @@ export default async function handler(request, response) {
     let writeVerified = false
     try {
       ({ value: written, verified: writeVerified } = await readModifyWrite({
-        list, getImpl: get, put, token, path: PATH,
+        list, getImpl: get, headImpl: head, put, token, path: PATH,
         validate: Array.isArray, empty: [],
         unavailableCode: 'thesis_store_unavailable',
         corruptCode: 'thesis_store_corrupt',

@@ -51,6 +51,7 @@ export async function loadHandler(entry) {
   await writeFile(
     join(dir, 'node_modules', '@vercel', 'blob', 'index.mjs'),
     `export async function list(opts) { return globalThis.__stocklensBlobStub.list(opts) }\n` +
+      `export async function head() { return { etag: 'test-etag' } }\n` +
       `export async function get(path) { const result = await globalThis.fetch('https://blob.test/' + path); if (!result.ok) { if (result.status === 404) return null; throw new Error('Blob fetch failed') } let body; try { body = JSON.stringify(await result.json()) } catch { body = '{invalid' } return { statusCode: 200, stream: new Response(body).body, blob: { etag: result.headers?.get?.('etag') || 'test-etag' } } }\n` +
       `export async function put(path, body, opts) {\n` +
       `  const stub = globalThis.__stocklensBlobStub\n` +
