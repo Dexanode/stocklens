@@ -1,3 +1,22 @@
+MallocNanoZone=0
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S=461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f
+NO_COLOR=1
+NoDefaultCurrentDirectoryInExePath=1
+OLDPWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+OPENBOT_AGENT_PROCESS=1
+PAGER=cat
+PATH=$'/Applications/Wine \nStaging.app/Contents/Resources/wine/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Users/dexa/Library/Application Support/OpenBot/provider-runtimes/codex/darwin-arm64/0.172.0/codex-path:/Users/dexa/.codex/tmp/arg0-macos/codex-arg00VuJF4:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/dexa/.cargo/bin:/Users/dexa/Library/Python/3.9/bin:/Users/dexa/.foundry/bin:/Users/dexa/tizen-studio/tools/ide/bin:/Users/dexa/tizen-studio/tools'
+PWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+SHELL=/bin/zsh
+SHLVL=1
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.LAlBoNYgeX/Listeners
+TERM=dumb
+TMPDIR=/var/folders/93/yn8h0ylj4tn60nmq57hqmvrm0000gn/T/
+USER=dexa
+XPC_FLAGS=0x0
+XPC_SERVICE_NAME=application.app.openbot.desktop.164698546.164698552
+__CFBundleIdentifier=app.openbot.desktop
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
 function fallbackPlan(universe, holdings) {
   const usable = universe.filter((asset) => asset.price !== '—' && asset.dataQuality?.nav !== false)
   const weights = usable.map((asset) => Math.max(1, Number(asset.score || 0)))
@@ -30,6 +49,8 @@ function historyStats(rows = []) {
 }
 
 function parseModelJson(content) {
+  if (Array.isArray(content)) return parseModelJson(content.map((part) => part?.text || part?.content || '').join(''))
+  if (content && typeof content === 'object' && (content.text || content.content)) return parseModelJson(content.text || content.content)
   if (content && typeof content === 'object') return content
   const text = String(content || '').replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
   const start = text.indexOf('{')
@@ -106,7 +127,15 @@ export default async function handler(request, response) {
     if (!result?.summary || !Array.isArray(result?.actions) || allocations.length !== compactUniverse.length || Math.round(total) !== 100 || allocations.some((item) => !symbols.has(item.symbol))) {
       return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings))
     }
-    response.status(200).json({ ...result, source: 'Vikey Portfolio Agent', paperOnly: true })
+    const confidenceMap = { low: 35, medium: 60, high: 80 }
+    const rawConfidence = Number(result.confidence)
+    const confidence = Number.isFinite(rawConfidence) ? Math.round(Math.max(0, Math.min(100, rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence))) : (confidenceMap[String(result.confidence || '').toLowerCase()] || 50)
+    const normalizedAllocations = allocations.map((item) => ({
+      ...item,
+      targetPercent: Math.max(0, Math.min(100, Math.round(Number(item.targetPercent) || 0))),
+      reason: String(item.reason || 'AI-weighted from supplied NAV history and data quality.').slice(0, 180),
+    }))
+    response.status(200).json({ ...result, allocations: normalizedAllocations, confidence, source: 'Vikey Portfolio Agent', paperOnly: true, fallback: false })
   } catch (error) {
     response.status(200).json(fallbackPlan(safeUniverse, safeHoldings))
   }

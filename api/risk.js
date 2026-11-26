@@ -1,3 +1,22 @@
+MallocNanoZone=0
+NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S=461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,6d25aa7656feac858f3a3bdaea5bcbab0dbfd426c9de8e6931ce90c399ee8e4f
+NO_COLOR=1
+NoDefaultCurrentDirectoryInExePath=1
+OLDPWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+OPENBOT_AGENT_PROCESS=1
+PAGER=cat
+PATH=$'/Applications/Wine \nStaging.app/Contents/Resources/wine/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/Users/dexa/Library/Application Support/OpenBot/provider-runtimes/codex/darwin-arm64/0.172.0/codex-path:/Users/dexa/.codex/tmp/arg0-macos/codex-arg00VuJF4:/opt/homebrew/bin:/opt/homebrew/sbin:/Users/dexa/.cargo/bin:/Users/dexa/Library/Python/3.9/bin:/Users/dexa/.foundry/bin:/Users/dexa/tizen-studio/tools/ide/bin:/Users/dexa/tizen-studio/tools'
+PWD=/Users/dexa/OpenBot/Agents/agent-1e0da785-6ac6-469e-8b50-ccfa26ddeb1d/stocklens
+SHELL=/bin/zsh
+SHLVL=1
+SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.LAlBoNYgeX/Listeners
+TERM=dumb
+TMPDIR=/var/folders/93/yn8h0ylj4tn60nmq57hqmvrm0000gn/T/
+USER=dexa
+XPC_FLAGS=0x0
+XPC_SERVICE_NAME=application.app.openbot.desktop.164698546.164698552
+__CFBundleIdentifier=app.openbot.desktop
+__CF_USER_TEXT_ENCODING=0x1F5:0x0:0x0
 function compact(value, limit) {
   const text = String(value || '').replace(/\s+/g, ' ').trim()
   return text.length > limit ? `${text.slice(0, limit - 1).trimEnd()}…` : text
@@ -8,6 +27,8 @@ function clamp(value, min, max) {
 }
 
 function parseModelJson(content) {
+  if (Array.isArray(content)) return parseModelJson(content.map((part) => part?.text || part?.content || '').join(''))
+  if (content && typeof content === 'object' && (content.text || content.content)) return parseModelJson(content.text || content.content)
   if (content && typeof content === 'object') return content
   const text = String(content || '').replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
   const start = text.indexOf('{')
@@ -104,6 +125,13 @@ export default async function handler(request, response) {
     if (!result?.summary || !result?.bull || !result?.bear || !Array.isArray(result?.catalysts) || !Array.isArray(result?.risks)) {
       return response.status(200).json(fallbackRisk(compactAsset, 'Vikey returned incomplete research JSON'))
     }
+    const rawScore = Number(result.score)
+    const normalizedScore = Number.isFinite(rawScore) ? Math.round(clamp(rawScore <= 10 ? rawScore * 10 : rawScore, 0, 100)) : compactAsset.score
+    const confidenceMap = { low: 35, medium: 60, high: 80 }
+    const rawConfidence = Number(result.confidence)
+    const normalizedConfidence = Number.isFinite(rawConfidence) ? Math.round(clamp(rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence, 0, 100)) : (confidenceMap[String(result.confidence || '').toLowerCase()] || 50)
+    const riskToken = String(result.risk || '').trim().split(/[.\s]/)[0]
+    const normalizedRisk = ['Lower', 'Moderate', 'Elevated', 'High'].includes(riskToken) ? riskToken : (normalizedScore >= 75 ? 'Lower' : normalizedScore >= 55 ? 'Moderate' : normalizedScore >= 35 ? 'Elevated' : 'High')
     const compactResult = {
       ...result,
       summary: compact(result.summary, 300),
@@ -112,6 +140,9 @@ export default async function handler(request, response) {
       catalysts: Array.isArray(result.catalysts) ? result.catalysts.slice(0, 2).map((item) => compact(item, 120)) : [],
       risks: Array.isArray(result.risks) ? result.risks.slice(0, 2).map((item) => compact(item, 120)) : [],
       portfolioRationale: compact(result.portfolioRationale, 240),
+      risk: normalizedRisk,
+      score: normalizedScore,
+      confidence: normalizedConfidence,
       source: 'Vikey Research AI',
       fallback: false,
     }
