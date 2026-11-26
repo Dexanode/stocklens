@@ -36,7 +36,7 @@ function makeStore(initial) {
     fetchCalls++
     fetchUrls.push(url)
     if (syncOnFetchCall && fetchCalls === syncOnFetchCall) visible = structuredClone(real)
-    return { ok: true, status: 200, json: async () => structuredClone(visible) }
+    return { ok: true, status: 200, headers: { get: () => "test-etag" }, json: async () => structuredClone(visible) }
   }
   const list = async () => ({ blobs: [{ pathname: PATH, url: 'https://blob.test/theses.json' }] })
   const putCalls = []
@@ -237,13 +237,13 @@ describe('readModifyWrite (rev 7: put() succeeding IS the write)', () => {
       calls++
       // Once a put has happened, the store reflects it (a healthy
       // store must) — otherwise no verify could ever confirm.
-      if (store.putCalls.length) return { ok: true, status: 200, json: async () => JSON.parse(store.putCalls.at(-1).body) }
+      if (store.putCalls.length) return { ok: true, status: 200, headers: { get: () => "test-etag" }, json: async () => JSON.parse(store.putCalls.at(-1).body) }
       // Read 1 is stale (missing 'b'); read 2 is fresh. Timestamps
       // make the second snapshot fresher (updatedAt is newer).
       const value = calls === 1
         ? [{ id: 'x', updatedAt: '2026-11-26T08:00:00.000Z' }]
         : [{ id: 'x', updatedAt: '2026-11-26T08:00:00.000Z' }, { id: 'y', updatedAt: '2026-11-26T08:01:00.000Z' }]
-      return { ok: true, status: 200, json: async () => structuredClone(value) }
+      return { ok: true, status: 200, headers: { get: () => "test-etag" }, json: async () => structuredClone(value) }
     }
     const result = await readModifyWrite({
       ...baseOpts(store),

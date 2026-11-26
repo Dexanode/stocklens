@@ -35,7 +35,7 @@ function seedStore() {
   // fake Blob must reflect puts — otherwise every successful PUT would
   // "fail" verification against the pre-write snapshot.
   globalThis.fetch = async () => ({
-    ok: true, status: 200,
+    ok: true, status: 200, headers: { get: () => "test-etag" },
     json: async () => stub.putCalls.length ? JSON.parse(stub.putCalls.at(-1).body) : structuredClone(EXISTING),
   })
 }

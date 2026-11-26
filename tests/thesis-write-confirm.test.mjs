@@ -54,7 +54,7 @@ function scriptedFetch(script) {
     const entry = script[Math.min(i, script.length - 1)]
     i++
     const value = typeof entry === 'function' ? entry() : entry
-    return { ok: true, status: 200, json: async () => structuredClone(value) }
+    return { ok: true, status: 200, headers: { get: () => "test-etag" }, json: async () => structuredClone(value) }
   }
 }
 

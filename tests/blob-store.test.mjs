@@ -56,9 +56,11 @@ describe('readBlobJson', () => {
     )
   })
 
-  it('fetch 404 (object vanished between list and fetch) -> { found: false }', async () => {
-    const result = await readBlobJson({ list: listWith([BLOB_ENTRY]), fetchImpl: fakeFetch({ ok: false, status: 404 }), token: TOKEN, path: PATH })
-    assert.deepEqual(result, { found: false, value: null })
+  it('a listed object returning 404 fails closed', async () => {
+    await assert.rejects(
+      () => readBlobJson({ list: listWith([BLOB_ENTRY]), fetchImpl: fakeFetch({ ok: false, status: 404 }), token: TOKEN, path: PATH }),
+      (error) => error instanceof BlobReadError && error.status === 503,
+    )
   })
 
   it('broken JSON -> BlobReadError blob_corrupt, 500', async () => {
@@ -90,7 +92,7 @@ describe('readBlobJson', () => {
       path: PATH,
       validate: Array.isArray,
     })
-    assert.deepEqual(result, { found: true, value: stored })
+    assert.deepEqual(result, { found: true, value: stored, etag: null })
   })
 
   it('custom error codes are honoured (thesis endpoint codes)', async () => {

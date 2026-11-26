@@ -20,21 +20,22 @@ const LIVE_NAV = { tokens: [
 
 // Router for global fetch: Coinbase -> canned live NAV; blob.test -> the
 // per-test blob behaviour set via `blobBehaviour`.
-let blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: false, throws: null }
+let blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: {}, jsonThrows: false, throws: null }
 
 function installFetchRouter() {
   globalThis.fetch = async (url) => {
     if (String(url).startsWith('https://api.coinbase.com')) {
-      return { ok: true, status: 200, json: async () => LIVE_NAV }
+      return { ok: true, status: 200, headers: { get: () => "test-etag" }, json: async () => LIVE_NAV }
     }
     // Rev 6: the verify re-read must see what the put just wrote.
     if (stub.putCalls.length) {
-      return { ok: true, status: 200, json: async () => JSON.parse(stub.putCalls.at(-1).body) }
+      return { ok: true, status: 200, headers: { get: () => "test-etag" }, json: async () => JSON.parse(stub.putCalls.at(-1).body) }
     }
     if (blobBehaviour.throws) throw blobBehaviour.throws
     return {
       ok: blobBehaviour.ok,
       status: blobBehaviour.status,
+      headers: { get: () => 'test-etag' },
       json: async () => {
         if (blobBehaviour.jsonThrows) throw new SyntaxError('Unexpected token in JSON')
         return blobBehaviour.jsonValue
@@ -63,7 +64,7 @@ after(async () => {
 describe('nav-history handler: failed Blob read must never cause a write', () => {
   it('GET with a genuinely missing file returns an empty history', async () => {
     stub.list = async () => ({ blobs: [] })
-    blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: false, throws: null }
+    blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: {}, jsonThrows: false, throws: null }
     const res = fakeResponse()
     await handler(fakeRequest({ method: 'GET' }), res)
     assert.equal(res.statusCode, 200)
@@ -82,7 +83,7 @@ describe('nav-history handler: failed Blob read must never cause a write', () =>
 
   it('GET fails closed (500 nav_history_store_corrupt) when stored JSON is broken', async () => {
     stub.list = listFindsFile()
-    blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: true, throws: null }
+    blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: {}, jsonThrows: true, throws: null }
     const res = fakeResponse()
     await handler(fakeRequest({ method: 'GET' }), res)
     assert.equal(res.statusCode, 500)
@@ -96,7 +97,7 @@ describe('nav-history handler: failed Blob read must never cause a write', () =>
       ? { blobs: [{ pathname: opts.prefix, url: 'https://blob.test/nav-history.json' }] }
       : { blobs: [] }
     stub.putCalls.length = 0
-    blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: false, throws: null }
+    blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: {}, jsonThrows: false, throws: null }
     const res = fakeResponse()
     await handler(
       fakeRequest({ method: 'POST', body: { symbols: ['AAPLc'], snapshots: [{ symbol: 'AAPLc', price: 999999 }] } }),
@@ -114,7 +115,7 @@ describe('nav-history handler: failed Blob read must never cause a write', () =>
     const oldPoint = { timestamp: Date.now() - 3600e3, price: 350 }
     stub.list = listFindsFile()
     stub.putCalls.length = 0
-    blobBehaviour = { ok: true, status: 200, jsonValue: { AAPLc: [oldPoint] }, jsonThrows: false, throws: null }
+    blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: { AAPLc: [oldPoint] }, jsonThrows: false, throws: null }
     const res = fakeResponse()
     await handler(fakeRequest({ method: 'POST', body: { symbols: ['AAPLc'] } }), res)
     assert.equal(res.statusCode, 200)
@@ -128,7 +129,7 @@ describe('nav-history handler: failed Blob read must never cause a write', () =>
   it('POST fails closed (503, put NOT called) when the existing history cannot be fetched', async () => {
     stub.list = listFindsFile()
     stub.putCalls.length = 0
-    blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: false, throws: new Error('ECONNRESET') }
+    blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: {}, jsonThrows: false, throws: new Error('ECONNRESET') }
     const res = fakeResponse()
     await handler(fakeRequest({ method: 'POST', body: { symbols: ['AAPLc'] } }), res)
     assert.equal(res.statusCode, 503)
@@ -139,7 +140,7 @@ describe('nav-history handler: failed Blob read must never cause a write', () =>
   it('POST fails closed (500 nav_history_store_corrupt, put NOT called) when stored history JSON is broken', async () => {
     stub.list = listFindsFile()
     stub.putCalls.length = 0
-    blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: true, throws: null }
+    blobBehaviour = { ok: true, status: 200, headers: { get: () => "test-etag" }, jsonValue: {}, jsonThrows: true, throws: null }
     const res = fakeResponse()
     await handler(fakeRequest({ method: 'POST', body: { symbols: ['AAPLc'] } }), res)
     assert.equal(res.statusCode, 500)

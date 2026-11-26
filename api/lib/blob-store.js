@@ -11,7 +11,7 @@
 // throws BlobReadError and the handler must answer with an error status
 // BEFORE any put() is called, so a failed read can never cause a write.
 //
-//   - file not listed / fetch 404  -> { found: false, value: null }
+//   - file not listed -> { found: false, value: null }
 //     (caller treats this as an empty store; writing is allowed)
 //   - list() throws, fetch throws, fetch non-2xx (other than 404)
 //     -> BlobReadError, code <unavailableCode>, status 503
@@ -117,9 +117,8 @@ export async function readBlobJson({
       `Blob fetch failed for ${path}: ${error instanceof Error ? error.message : String(error)}`,
     )
   }
-  // A 404 on the fetch means the object vanished between list() and
-  // fetch(): treat it like a missing file, not a failure.
-  if (response.status === 404) return { found: false, value: null }
+  // A listed object returning 404 is an inconsistent read, not proof
+  // that the store is empty. Never overwrite existing data in this case.
   if (!response.ok) {
     throw new BlobReadError(
       unavailableCode,
@@ -136,7 +135,8 @@ export async function readBlobJson({
   if (validate && !validate(payload)) {
     throw new BlobReadError(corruptCode, 500, `Blob content for ${path} failed shape validation.`)
   }
-  return { found: true, value: payload }
+  const etag = response.headers?.get?.('etag') || null
+  return { found: true, value: payload, etag }
 }
 
 // Freshness score for a stored snapshot: [newest record timestamp, record
@@ -256,12 +256,12 @@ export async function readModifyWrite({
         const result = await readBlobJson({ ...readOpts, cacheBust: i > 0 })
         const value = result.found ? result.value : empty
         const score = freshness(value)
-        if (best === null || fresher(score, bestScore)) { best = value; bestScore = score }
+        if (best === null || fresher(score, bestScore)) { best = { value, found: result.found, etag: result.etag }; bestScore = score }
       } catch (error) {
         lastError = error
       }
     }
-    if (best === null) throw lastError
+    if (best === null || (!best.found && lastError)) throw lastError
     return best
   }
 
@@ -284,7 +284,11 @@ export async function readModifyWrite({
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     // A failed read aborts before any write (rev 4 guarantee).
-    const current = await readFreshest()
+    const snapshot = await readFreshest()
+    const current = snapshot.value
+    if (snapshot.found && !snapshot.etag) {
+      throw new BlobReadError(unavailableCode, 503, `Blob read for ${path} did not include an ETag; refusing an unsafe write.`)
+    }
     // FailRequest propagates immediately: invalid request, not a store
     // problem — no put(), no retry.
     const next = mutate(current)
@@ -293,7 +297,7 @@ export async function readModifyWrite({
       await put(path, JSON.stringify(next), {
         access: 'private',
         addRandomSuffix: false,
-        allowOverwrite: true,
+        ...(snapshot.found ? { ifMatch: snapshot.etag } : { allowOverwrite: false }),
         token,
         contentType: 'application/json',
         cacheControlMaxAge: 0,

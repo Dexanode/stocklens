@@ -59,7 +59,7 @@ describe('thesis handler: failed Blob read must never cause a write', () => {
       : { blobs: [] }
     stub.putCalls.length = 0
     globalThis.fetch = async () => ({
-      ok: true, status: 200,
+      ok: true, status: 200, headers: { get: () => "test-etag" },
       json: async () => stub.putCalls.length ? JSON.parse(stub.putCalls.at(-1).body) : [],
     })
     const res = fakeResponse()
@@ -146,7 +146,7 @@ describe('thesis handler: failed Blob read must never cause a write', () => {
     stub.putCalls.length = 0
     // Rev 6: the verify re-read must see what the put just wrote.
     globalThis.fetch = async () => ({
-      ok: true, status: 200,
+      ok: true, status: 200, headers: { get: () => "test-etag" },
       json: async () => stub.putCalls.length ? JSON.parse(stub.putCalls.at(-1).body) : structuredClone(EXISTING),
     })
     const res = fakeResponse()
