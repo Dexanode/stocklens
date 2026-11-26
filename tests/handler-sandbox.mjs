@@ -34,8 +34,10 @@ export function fakeResponse() {
   return res
 }
 
-export function fakeRequest({ method, query = {}, headers = {}, body = undefined }) {
-  return { method, query, headers, body }
+export function fakeRequest({ method, url, query = {}, headers = {}, body = undefined }) {
+  // `url` is the raw request URL (e.g. '/api/thesis?id=th_x'); rev 5 reads
+  // the GET id from it. Older tests omit it and rely on `query` instead.
+  return { method, url, query, headers, body }
 }
 
 export async function loadHandler(entry) {

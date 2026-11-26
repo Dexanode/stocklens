@@ -85,6 +85,41 @@ function parseBody(request) {
   }
 }
 
+// How the GET branch finds the thesis id (rev 5).
+//
+// Root cause of the live 404s on 26 Nov 2026: the old GET read the id ONLY
+// from `request.query?.id`. On the preview deployment that never saw the id
+// — GET /api/thesis?id=th_f4005b18-... returned 404 six times over ~8 min
+// (14:22:45–14:30:39) while PUT with the SAME id in the JSON body returned
+// 200 twice, so the record provably existed and the id was provably right;
+// the id simply never reached the lookup. The frontend is exonerated:
+// it fetches `/api/thesis?id=<serverId>` (src/main.jsx) and the share link
+// carries the server id from the POST response, so the sent id was correct.
+// So parse the query string from the raw request URL ourselves instead of
+// trusting the runtime to populate `request.query`, and accept `thesisId`
+// as an alias (the page's own share links use ?thesisId=). `request.query`
+// stays as a fallback for runtimes that do populate it.
+//
+// The old GET also answered `Cache-Control: public, max-age=30,
+// stale-while-revalidate=300` — a cached 404 for a just-created thesis can
+// be served stale for minutes, and a query-insensitive edge cache key would
+// serve one id's 404 for every id. Single-thesis GET is now `no-store`.
+function queryId(request) {
+  const raw = typeof request.url === 'string' ? request.url : ''
+  if (raw) {
+    try {
+      const parsed = new URL(raw.startsWith('http') ? raw : `http://localhost${raw.startsWith('/') ? raw : `/${raw}`}`)
+      const fromUrl = parsed.searchParams.get('id') || parsed.searchParams.get('thesisId')
+      if (fromUrl) return fromUrl
+    } catch {
+      // Fall through to request.query below.
+    }
+  }
+  const query = request.query || {}
+  const fromQuery = query.id ?? query.thesisId
+  return Array.isArray(fromQuery) ? fromQuery[0] : fromQuery
+}
+
 export default async function handler(request, response) {
   const token = process.env.BLOB_READ_WRITE_TOKEN
   if (!token) return response.status(503).json({ persistent: false, error: 'BLOB_READ_WRITE_TOKEN is not configured.' })
@@ -101,10 +136,17 @@ export default async function handler(request, response) {
       throw error
     }
     if (request.method === 'GET') {
-      const id = clean(request.query?.id, 100)
+      const id = clean(queryId(request), 100)
+      if (!id) {
+        // List view: every stored thesis in public form (no edit tokens).
+        // The pre-PR handler returned the list here; rev 1–4 returned 404
+        // for a missing id, which also meant a plain GET could never list.
+        response.setHeader('Cache-Control', 'no-store')
+        return response.status(200).json({ persistent: true, theses: theses.map(publicThesis) })
+      }
       const thesis = theses.find((item) => item.id === id)
       if (!thesis) return response.status(404).json({ persistent: true, error: 'Thesis not found.' })
-      response.setHeader('Cache-Control', 'public, max-age=30, stale-while-revalidate=300')
+      response.setHeader('Cache-Control', 'no-store')
       return response.status(200).json({ persistent: true, thesis: publicThesis(thesis) })
     }
     // No DELETE endpoint by design (review fix, 26 Nov 2026): thesis ids
