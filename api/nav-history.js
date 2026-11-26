@@ -1,7 +1,7 @@
 import { list, put } from '@vercel/blob'
 import { fetchLiveNav } from './lib/coinbase.js'
 import { blobPath } from './lib/storage.js'
-import { readBlobJson, BlobReadError } from './lib/blob-store.js'
+import { readBlobJson, readModifyWrite, BlobReadError, BlobWriteError } from './lib/blob-store.js'
 
 // Namespaced per environment (see api/lib/storage.js): production keeps
 // stocklens/nav-history.json; preview/development write under
@@ -37,10 +37,10 @@ async function readHistory(token) {
   return found ? value : {}
 }
 
-// Returns the error response for a store-read failure, or null when the
-// error is not a BlobReadError.
+// Returns the error response for a store-read failure or an
+// unconfirmed write, or null when the error is neither.
 function storeErrorResponse(response, error) {
-  if (error instanceof BlobReadError) {
+  if (error instanceof BlobReadError || error instanceof BlobWriteError) {
     return response.status(error.status).json({ persistent: false, history: {}, error: error.message, code: error.code })
   }
   return null
@@ -109,46 +109,75 @@ export default async function handler(request, response) {
     } catch {
       return response.status(503).json({ persistent: false, history: {}, error: 'Live NAV reference unavailable; snapshot rejected, nothing was written.' })
     }
+    for (const symbol of wanted) {
+      const price = liveNav.get(symbol)
+      if (!Number.isFinite(price) || price <= 0) rejected.push({ symbol, reason: 'no live NAV reference for symbol' })
+    }
+    const observable = wanted.filter((symbol) => {
+      const price = liveNav.get(symbol)
+      return Number.isFinite(price) && price > 0
+    })
+    if (!observable.length) {
+      response.setHeader('Cache-Control', 'no-store')
+      return response.status(400).json({ persistent: false, history: {}, error: 'No valid snapshots in request.', accepted: [], skipped: [], rejected })
+    }
 
-    // A failed read must fail the request, not silently become an empty
-    // history: the put() below would then overwrite the stored file with
-    // only the new points and wipe all previous history. Rev 4.
-    let existing
+    // Rev 6: verified write (see api/lib/blob-store.js). The snapshot
+    // timestamp is fixed once per request so a retry appends the identical
+    // point instead of a second one, and the mutate is idempotent: a
+    // point for this timestamp already present is skipped, not duplicated.
+    // A 200 means a fresh re-read showed every new point AND no symbol
+    // the write contained went missing; anything else is a 503
+    // (nav_history_store_not_confirmed), never a 200 for a snapshot that
+    // may not have persisted.
+    const now = Date.now()
+    const intended = []
+    const skipped = new Set()
+    let verified
     try {
-      existing = await readHistory(token)
+      verified = await readModifyWrite({
+        list, put, token, path: PATH,
+        validate: (payload) => payload !== null && typeof payload === 'object' && !Array.isArray(payload),
+        empty: {},
+        unavailableCode: 'nav_history_store_unavailable',
+        corruptCode: 'nav_history_store_corrupt',
+        notConfirmedCode: 'nav_history_store_not_confirmed',
+        mutate: (existing) => {
+          const history = { ...existing }
+          let changed = false
+          for (const symbol of observable) {
+            const price = liveNav.get(symbol)
+            const rows = Array.isArray(history[symbol]) ? history[symbol].filter((row) => now - Number(row.timestamp) <= MAX_AGE) : []
+            if (rows.length && now - Number(rows.at(-1).timestamp) < 15 * 60e3) {
+              skipped.add(symbol)
+              continue
+            }
+            if (rows.some((row) => Number(row.timestamp) === now)) {
+              skipped.add(symbol)
+              continue
+            }
+            rows.push({ timestamp: now, price })
+            history[symbol] = rows.slice(-MAX_POINTS)
+            if (!intended.some((point) => point.symbol === symbol)) intended.push({ symbol, timestamp: now, price })
+            changed = true
+          }
+          return changed ? history : existing
+        },
+        confirm: (written, stored) => {
+          for (const point of intended) {
+            const rows = Array.isArray(stored[point.symbol]) ? stored[point.symbol] : []
+            if (!rows.some((row) => Number(row.timestamp) === point.timestamp && Number(row.price) === point.price)) return false
+          }
+          return Object.keys(written).every((symbol) => Array.isArray(stored[symbol]) && stored[symbol].length >= written[symbol].length)
+        },
+      })
     } catch (error) {
       const handled = storeErrorResponse(response, error)
       if (handled) return handled
       throw error
     }
-    const now = Date.now()
-    const history = { ...existing }
-    const accepted = []
-    const skipped = []
-    for (const symbol of wanted) {
-      const price = liveNav.get(symbol)
-      if (!Number.isFinite(price) || price <= 0) {
-        rejected.push({ symbol, reason: 'no live NAV reference for symbol' })
-        continue
-      }
-      const rows = Array.isArray(history[symbol]) ? history[symbol].filter((row) => now - Number(row.timestamp) <= MAX_AGE) : []
-      if (rows.length && now - Number(rows.at(-1).timestamp) < 15 * 60e3) {
-        skipped.push(symbol)
-        continue
-      }
-      rows.push({ timestamp: now, price })
-      history[symbol] = rows.slice(-MAX_POINTS)
-      accepted.push(symbol)
-    }
-    if (!accepted.length && !skipped.length) {
-      response.setHeader('Cache-Control', 'no-store')
-      return response.status(400).json({ persistent: false, history: {}, error: 'No valid snapshots in request.', accepted, skipped, rejected })
-    }
-    if (accepted.length) {
-      await put(PATH, JSON.stringify(history), { access: 'private', addRandomSuffix: false, allowOverwrite: true, token, contentType: 'application/json' })
-    }
     response.setHeader('Cache-Control', 'no-store')
-    return response.status(200).json({ persistent: true, history, accepted, skipped, rejected })
+    return response.status(200).json({ persistent: true, history: verified, accepted: [...new Set(intended.map((point) => point.symbol))], skipped: [...skipped], rejected })
   } catch (error) {
     // Backstop: a store-read failure must never surface as 200 with an
     // empty history (the old behaviour hid the failure from callers).

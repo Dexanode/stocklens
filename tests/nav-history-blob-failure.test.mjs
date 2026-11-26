@@ -27,6 +27,10 @@ function installFetchRouter() {
     if (String(url).startsWith('https://api.coinbase.com')) {
       return { ok: true, status: 200, json: async () => LIVE_NAV }
     }
+    // Rev 6: the verify re-read must see what the put just wrote.
+    if (stub.putCalls.length) {
+      return { ok: true, status: 200, json: async () => JSON.parse(stub.putCalls.at(-1).body) }
+    }
     if (blobBehaviour.throws) throw blobBehaviour.throws
     return {
       ok: blobBehaviour.ok,
@@ -86,7 +90,11 @@ describe('nav-history handler: failed Blob read must never cause a write', () =>
   })
 
   it('POST stores only the server-observed live NAV, never the fake client price', async () => {
-    stub.list = async () => ({ blobs: [] })
+    // Rev 6: list() reports the file once a put has happened, so the
+    // verify re-read sees it (the initial read still sees a missing file).
+    stub.list = async (opts) => stub.putCalls.length
+      ? { blobs: [{ pathname: opts.prefix, url: 'https://blob.test/nav-history.json' }] }
+      : { blobs: [] }
     stub.putCalls.length = 0
     blobBehaviour = { ok: true, status: 200, jsonValue: {}, jsonThrows: false, throws: null }
     const res = fakeResponse()

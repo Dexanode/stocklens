@@ -13,6 +13,7 @@ import { baseSepolia } from "wagmi/chains";
 import "./index.css";
 import "./b20.css";
 import "./market-layout.css";
+import { resolveShareId } from "./thesis-share.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -977,6 +978,8 @@ function App() {
     setThesisWorkspace((items) => items.map((item) => item.id === id ? next : item));
     persistThesis(next).then((result) => {
       if (result?.status === 410) setNotice(`${next.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
+      else if (result?.status === 503) setNotice(`${next.symbol} status berubah lokal, tapi server belum mengonfirmasi penyimpanannya (${result?.code || "store_unavailable"}) — coba lagi sebentar lagi, jangan tutup tab dulu.`);
+      else if (result?.thesis) setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
     });
     recordThesisEvent(next.id, next.symbol, `STATUS → ${status}`, `Thesis status changed from the workspace.`);
   }
@@ -985,7 +988,13 @@ function App() {
     if (!item?.id?.startsWith("th_")) return { status: 0 };
     try {
       const response = await fetch("/api/thesis", { method: "PUT", headers: { "Content-Type": "application/json", "x-edit-token": editTokenFor(item.id) }, body: JSON.stringify(item) });
-      return { status: response.status };
+      // Rev 6: return the whole result. On success the body carries the
+      // record as the server confirmed it — callers adopt it as the
+      // source of truth instead of assuming the local copy persisted.
+      // On an unconfirmed write (503 thesis_store_not_confirmed) the
+      // change is local-only and the caller must say so.
+      const payload = await response.json().catch(() => null);
+      return { status: response.status, thesis: payload?.thesis || null, code: payload?.code || null, error: payload?.error || null };
     } catch { /* local state remains available */ return { status: 0 }; }
   }
 
@@ -1015,6 +1024,8 @@ function App() {
     setThesisWorkspace((items) => items.map((entry) => entry.id === id ? next : entry));
     persistThesis(next).then((result) => {
       if (result?.status === 410) setNotice(`${item.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
+      else if (result?.status === 503) setNotice(`${item.symbol} review tersimpan lokal, tapi server belum mengonfirmasi penyimpanannya (${result?.code || "store_unavailable"}) — coba lagi sebentar lagi, jangan tutup tab dulu.`);
+      else if (result?.thesis) setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
     });
     runFollowUp(next);
     recordThesisEvent(next.id, next.symbol, "OUTCOME REVIEWED", "NAV snapshot and agent follow-up refreshed.");
@@ -1054,17 +1065,20 @@ function App() {
   }
 
   async function shareThesis(item) {
-    let serverId = item.id?.startsWith("th_") ? item.id : "";
-    if (!serverId) {
-      try {
-        const response = await fetch("/api/thesis", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(item) });
-        const payload = response.ok ? await response.json() : null;
-        if (payload?.thesis) {
-          serverId = payload.thesis.id;
-          if (payload.editToken) storeEditToken(serverId, payload.editToken);
-          setThesisWorkspace((items) => items.map((entry) => entry.id === item.id ? payload.thesis : entry));
-        }
-      } catch { /* fall back to local payload share below */ }
+    // Rev 6: never put an unverified id in a share link. resolveShareId
+    // (src/thesis-share.js) checks the id exists server-side first — a
+    // workspace copy can hold an id whose record was lost pre-rev-6, and
+    // a link to a missing record 404s for every recipient. On 404 it
+    // re-creates the thesis and returns the fresh server id; when the
+    // server is unreachable it returns "" and we fall back to the
+    // ?thesis= JSON link, which always works. saveThesis already adopts
+    // the server id from the POST response, so a freshly saved thesis
+    // links correctly; this covers the local-only and orphan-id paths.
+    const resolved = await resolveShareId(item, fetch);
+    const serverId = resolved.serverId;
+    if (resolved.thesis) {
+      if (resolved.editToken) storeEditToken(resolved.thesis.id, resolved.editToken);
+      setThesisWorkspace((items) => items.map((entry) => entry.id === item.id ? resolved.thesis : entry));
     }
     const outcome = thesisOutcome(item);
     const payload = {

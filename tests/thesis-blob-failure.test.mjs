@@ -51,9 +51,17 @@ after(async () => {
 
 describe('thesis handler: failed Blob read must never cause a write', () => {
   it('POST creates a thesis when the store file genuinely does not exist', async () => {
-    stub.list = async () => ({ blobs: [] })
+    // Rev 6: the verify re-read must see the file the put just wrote, so
+    // list() reports the file once a put has happened and fetch reflects
+    // it; the initial read still sees a genuinely missing file.
+    stub.list = async (opts) => stub.putCalls.length
+      ? { blobs: [{ pathname: opts.prefix, url: 'https://blob.test/theses.json' }] }
+      : { blobs: [] }
     stub.putCalls.length = 0
-    globalThis.fetch = blobFetch()
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => stub.putCalls.length ? JSON.parse(stub.putCalls.at(-1).body) : [],
+    })
     const res = fakeResponse()
     await handler(fakeRequest({ method: 'POST', body: { symbol: 'AAPLc', title: 'New', note: 'n' } }), res)
     assert.equal(res.statusCode, 200)
@@ -136,7 +144,11 @@ describe('thesis handler: failed Blob read must never cause a write', () => {
   it('PUT succeeds on a healthy store and preserves the existing thesis', async () => {
     stub.list = listFindsFile()
     stub.putCalls.length = 0
-    globalThis.fetch = blobFetch()
+    // Rev 6: the verify re-read must see what the put just wrote.
+    globalThis.fetch = async () => ({
+      ok: true, status: 200,
+      json: async () => stub.putCalls.length ? JSON.parse(stub.putCalls.at(-1).body) : structuredClone(EXISTING),
+    })
     const res = fakeResponse()
     await handler(
       fakeRequest({ method: 'PUT', headers: { 'x-edit-token': 'tok-1' }, body: { id: 'th_old', symbol: 'AAPLc', title: 'Updated', note: 'n' } }),

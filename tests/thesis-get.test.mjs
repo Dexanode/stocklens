@@ -31,7 +31,13 @@ function listFindsFile() {
 function seedStore() {
   stub.list = listFindsFile()
   stub.putCalls.length = 0
-  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => EXISTING })
+  // Rev 6: a write is only 200 when a fresh re-read confirms it, so the
+  // fake Blob must reflect puts — otherwise every successful PUT would
+  // "fail" verification against the pre-write snapshot.
+  globalThis.fetch = async () => ({
+    ok: true, status: 200,
+    json: async () => stub.putCalls.length ? JSON.parse(stub.putCalls.at(-1).body) : structuredClone(EXISTING),
+  })
 }
 
 let handler

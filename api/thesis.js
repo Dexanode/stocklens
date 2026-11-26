@@ -1,6 +1,6 @@
 import { list, put } from '@vercel/blob'
 import { blobPath } from './lib/storage.js'
-import { readBlobJson, BlobReadError } from './lib/blob-store.js'
+import { readBlobJson, readModifyWrite, BlobReadError, BlobWriteError, FailRequest } from './lib/blob-store.js'
 
 const PATH = blobPath('stocklens/theses.json')
 const MAX_ITEMS = 500
@@ -23,13 +23,24 @@ async function readTheses(token) {
   return found ? value : []
 }
 
-// Returns the error response for a store-read failure, or null when the
-// error is not a BlobReadError (the outer catch then handles it).
+// Returns the error response for a store-read failure or an
+// unconfirmed write, or null when the error is not one of those (the
+// outer catch then handles it).
 function storeErrorResponse(response, error) {
-  if (error instanceof BlobReadError) {
+  if (error instanceof BlobReadError || error instanceof BlobWriteError) {
     return response.status(error.status).json({ persistent: false, error: error.message, code: error.code })
   }
   return null
+}
+
+// Maps an error from readModifyWrite to its HTTP response: a domain
+// abort (FailRequest) keeps its own status/body, a store failure keeps
+// its 503/500 + code, anything else is rethrown to the outer catch.
+function writeErrorResponse(response, error) {
+  if (error instanceof FailRequest) {
+    return response.status(error.status).json(error.body)
+  }
+  return storeErrorResponse(response, error)
 }
 
 function clean(value, max = 500) {
@@ -124,18 +135,17 @@ export default async function handler(request, response) {
   const token = process.env.BLOB_READ_WRITE_TOKEN
   if (!token) return response.status(503).json({ persistent: false, error: 'BLOB_READ_WRITE_TOKEN is not configured.' })
   try {
-    // A failed read must fail the request, not silently become an empty
-    // store: writing after this point would overwrite the stored file
-    // with whatever the (empty) in-memory list holds. Rev 4.
-    let theses
-    try {
-      theses = await readTheses(token)
-    } catch (error) {
-      const handled = storeErrorResponse(response, error)
-      if (handled) return handled
-      throw error
-    }
     if (request.method === 'GET') {
+      // A failed read must fail the request, not silently become an empty
+      // store (rev 4).
+      let theses
+      try {
+        theses = await readTheses(token)
+      } catch (error) {
+        const handled = storeErrorResponse(response, error)
+        if (handled) return handled
+        throw error
+      }
       const id = clean(queryId(request), 100)
       if (!id) {
         // List view: every stored thesis in public form (no edit tokens).
@@ -164,49 +174,112 @@ export default async function handler(request, response) {
     if (request.method === 'POST') {
       // The server assigns the id and the edit token; anything the client
       // sends for `id` or `editToken` is ignored, so a caller cannot plant
-      // a known id or a known token.
+      // a known id or a known token. The id/token are fixed BEFORE the
+      // write loop so a retry re-uses them instead of minting a second
+      // record (rev 6: mutate must be idempotent).
       const id = `th_${crypto.randomUUID()}`
-      const next = { ...sanitize(input, id), editToken: crypto.randomUUID() }
+      const editToken = crypto.randomUUID()
+      const next = { ...sanitize(input, id), editToken }
       if (!hasContent(next)) return response.status(400).json({ error: 'Thesis requires at least a symbol, title, or note.' })
-      theses.unshift(next)
-      await put(PATH, JSON.stringify(theses.slice(0, MAX_ITEMS)), { access: 'private', addRandomSuffix: false, allowOverwrite: true, token, contentType: 'application/json' })
+      // Rev 6: verified write. A 200 now means a fresh re-read showed
+      // the new record AND no record the write contained went missing;
+      // anything else is a 503 (thesis_store_not_confirmed), never a
+      // 200 for a write that may not have persisted.
+      let verified
+      try {
+        verified = await readModifyWrite({
+          list, put, token, path: PATH,
+          validate: Array.isArray, empty: [],
+          unavailableCode: 'thesis_store_unavailable',
+          corruptCode: 'thesis_store_corrupt',
+          notConfirmedCode: 'thesis_store_not_confirmed',
+          mutate: (theses) => {
+            if (theses.some((item) => item.id === id)) return theses
+            return [next, ...theses].slice(0, MAX_ITEMS)
+          },
+          confirm: (written, stored) => {
+            const created = stored.find((item) => item.id === id)
+            if (!created || created.editToken !== editToken) return false
+            return written.every((item) => stored.some((row) => row.id === item.id))
+          },
+        })
+      } catch (error) {
+        const handled = writeErrorResponse(response, error)
+        if (handled) return handled
+        throw error
+      }
+      const created = verified.find((item) => item.id === id)
+      if (!created) return response.status(503).json({ persistent: false, error: 'Thesis write could not be confirmed.', code: 'thesis_store_not_confirmed' })
       response.setHeader('Cache-Control', 'no-store')
       // The editToken is returned ONLY here, once, at creation. It is
       // never in a GET response, never in a PUT response, and never in a
       // share link (?thesisId= carries the id only).
-      return response.status(200).json({ persistent: true, thesis: publicThesis(next), editToken: next.editToken })
+      return response.status(200).json({ persistent: true, thesis: publicThesis(created), editToken })
     }
 
     // PUT: proof of ownership via the x-edit-token header.
     const id = clean(input.id, 100)
     if (!id) return response.status(400).json({ error: 'Missing thesis id.' })
-    const index = theses.findIndex((item) => item.id === id)
-    // PUT must only update a thesis that already exists. It never creates
-    // one: previously a PUT with a new id silently inserted a thesis, so
-    // anyone who knew (or guessed) an id could plant content (audit C-1).
-    if (index < 0) return response.status(404).json({ persistent: true, error: 'Thesis not found.' })
-    const existing = theses[index]
-    // Legacy theses (created before edit tokens existed) carry no owner
-    // proof at all — no creator address, no token, nothing to verify
-    // against. Claiming ownership cryptographically is impossible, so
-    // they are read-only on the server instead of staying overwritable
-    // by anyone with the share link. The owner keeps the local copy in
-    // their workspace and can "Duplicate as new" in the UI to get an
-    // editable copy with a fresh token; the legacy record stays visible
-    // and shareable.
-    if (!existing.editToken) {
-      return response.status(410).json({ persistent: true, error: 'This thesis was created before edit tokens and is read-only on the server. Duplicate it as a new thesis to edit it.', code: 'thesis_legacy_read_only', legacy: true })
-    }
     const supplied = clean(request.headers?.['x-edit-token'], 200)
-    if (!supplied) return response.status(401).json({ error: 'Missing edit token. Send the x-edit-token header issued at creation.', code: 'edit_token_required' })
-    if (supplied !== existing.editToken) return response.status(401).json({ error: 'Edit token does not match this thesis.', code: 'edit_token_mismatch' })
-    const next = sanitize(input, id)
-    const merged = { ...existing, ...next, editToken: existing.editToken }
-    if (!hasContent(merged)) return response.status(400).json({ error: 'Thesis requires at least a symbol, title, or note.' })
-    theses[index] = merged
-    await put(PATH, JSON.stringify(theses.slice(0, MAX_ITEMS)), { access: 'private', addRandomSuffix: false, allowOverwrite: true, token, contentType: 'application/json' })
+    // The merged record is computed once, before the write loop, so a
+    // retry re-applies the identical change (rev 6: mutate idempotent).
+    // The ownership checks run inside mutate on every attempt, against
+    // the freshest read, and abort with FailRequest (no write, no retry).
+    const sanitized = sanitize(input, id)
+    let merged = null
+    let verified
+    try {
+      verified = await readModifyWrite({
+        list, put, token, path: PATH,
+        validate: Array.isArray, empty: [],
+        unavailableCode: 'thesis_store_unavailable',
+        corruptCode: 'thesis_store_corrupt',
+        notConfirmedCode: 'thesis_store_not_confirmed',
+        mutate: (theses) => {
+          // PUT must only update a thesis that already exists. It never
+          // creates one: previously a PUT with a new id silently inserted
+          // a thesis, so anyone who knew (or guessed) an id could plant
+          // content (audit C-1).
+          const index = theses.findIndex((item) => item.id === id)
+          if (index < 0) throw new FailRequest(404, { persistent: true, error: 'Thesis not found.' })
+          const existing = theses[index]
+          // Legacy theses (created before edit tokens existed) carry no
+          // owner proof at all — no creator address, no token, nothing
+          // to verify against. Claiming ownership cryptographically is
+          // impossible, so they are read-only on the server instead of
+          // staying overwritable by anyone with the share link. The owner
+          // keeps the local copy in their workspace and can "Duplicate
+          // as new" in the UI to get an editable copy with a fresh token;
+          // the legacy record stays visible and shareable.
+          if (!existing.editToken) {
+            throw new FailRequest(410, { persistent: true, error: 'This thesis was created before edit tokens and is read-only on the server. Duplicate it as a new thesis to edit it.', code: 'thesis_legacy_read_only', legacy: true })
+          }
+          if (!supplied) throw new FailRequest(401, { error: 'Missing edit token. Send the x-edit-token header issued at creation.', code: 'edit_token_required' })
+          if (supplied !== existing.editToken) throw new FailRequest(401, { error: 'Edit token does not match this thesis.', code: 'edit_token_mismatch' })
+          merged = { ...existing, ...sanitized, editToken: existing.editToken }
+          if (!hasContent(merged)) throw new FailRequest(400, { error: 'Thesis requires at least a symbol, title, or note.' })
+          const out = [...theses]
+          out[index] = merged
+          return out
+        },
+        confirm: (written, stored) => {
+          const row = stored.find((item) => item.id === id)
+          if (!row || row.status !== merged.status || row.updatedAt !== merged.updatedAt || row.reviewCount !== merged.reviewCount || row.editToken !== merged.editToken) return false
+          return written.every((item) => stored.some((r) => r.id === item.id))
+        },
+      })
+    } catch (error) {
+      const handled = writeErrorResponse(response, error)
+      if (handled) return handled
+      throw error
+    }
+    // The response carries the record as the fresh re-read confirmed it,
+    // not the in-memory merge — the frontend adopts this as the source of
+    // truth (rev 6).
+    const persisted = verified.find((item) => item.id === id)
+    if (!persisted) return response.status(503).json({ persistent: false, error: 'Thesis write could not be confirmed.', code: 'thesis_store_not_confirmed' })
     response.setHeader('Cache-Control', 'no-store')
-    return response.status(200).json({ persistent: true, thesis: publicThesis(merged) })
+    return response.status(200).json({ persistent: true, thesis: publicThesis(persisted) })
   } catch (error) {
     return response.status(500).json({ persistent: false, error: error instanceof Error ? error.message : 'Thesis persistence unavailable.' })
   }
