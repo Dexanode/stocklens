@@ -29,6 +29,15 @@ function historyStats(rows = []) {
   return { historyCount: prices.length, historyChangePct: ((prices.at(-1) - prices[0]) / prices[0]) * 100, volatilityPct: Math.sqrt(variance) }
 }
 
+function parseModelJson(content) {
+  if (content && typeof content === 'object') return content
+  const text = String(content || '').replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end <= start) throw new Error('Vikey returned no JSON object')
+  return JSON.parse(text.slice(start, end + 1))
+}
+
 export default async function handler(request, response) {
   if (request.method !== 'POST') return response.status(405).json({ error: 'Method not allowed' })
   if (String(request.headers['x-stocklens-country'] || '').toUpperCase() === 'US') return response.status(451).json({ error: 'Research access is unavailable in the United States.' })
@@ -90,7 +99,7 @@ export default async function handler(request, response) {
     }
     const payload = await upstream.json()
     const content = payload.choices?.[0]?.message?.content
-    const result = typeof content === 'string' ? JSON.parse(content) : content
+    const result = parseModelJson(content)
     const symbols = new Set(compactUniverse.map((asset) => asset.symbol))
     const allocations = Array.isArray(result?.allocations) ? result.allocations : []
     const total = allocations.reduce((sum, item) => sum + Number(item.targetPercent || 0), 0)

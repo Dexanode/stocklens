@@ -7,6 +7,15 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value))
 }
 
+function parseModelJson(content) {
+  if (content && typeof content === 'object') return content
+  const text = String(content || '').replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start < 0 || end <= start) throw new Error('Vikey returned no JSON object')
+  return JSON.parse(text.slice(start, end + 1))
+}
+
 function fallbackRisk(asset, reason = 'Vikey unavailable') {
   const price = Number(String(asset.price || '').replace(/[$,]/g, ''))
   const supply = Number(asset.totalSupply || 0)
@@ -91,7 +100,7 @@ export default async function handler(request, response) {
     }
     const payload = await upstream.json()
     const content = payload.choices?.[0]?.message?.content
-    const result = typeof content === 'string' ? JSON.parse(content) : content
+    const result = parseModelJson(content)
     if (!result?.summary || !result?.bull || !result?.bear || !Array.isArray(result?.catalysts) || !Array.isArray(result?.risks)) {
       return response.status(200).json(fallbackRisk(compactAsset, 'Vikey returned incomplete research JSON'))
     }
