@@ -1,4 +1,8 @@
 .research-grid .watchlist-panel h2 {font-size:1.4rem;letter-spacing:-.025em}
+.research-grid .watchlist-panel {min-width:0}
+.research-grid .watchlist-panel .panel-head {display:grid;grid-template-columns:minmax(0,1fr);gap:.75rem}
+.research-grid .watchlist-tools {display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;min-width:0}
+.research-grid .watchlist-tools .count {width:auto;white-space:nowrap}
 .research-grid .asset-list {max-height:23rem;overflow:auto}
 .asset-quote small,.largest-move small {font-size:.8rem}
 .switch-asset {display:none}
