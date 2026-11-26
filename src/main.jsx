@@ -503,9 +503,9 @@ function App() {
   const chartYLabels = useMemo(() => {
     const days = { "1W": 7, "1M": 30, "3M": 90, "1Y": 365 };
     const cutoff = Date.now() - (days[range] || 30) * 864e5;
-    const values = (Array.isArray(asset.navHistory) ? asset.navHistory : []).filter((row) => Number(row.timestamp) >= cutoff).map((row) => Number(row.price)).filter(Number.isFinite);
-    const fallbackPrice = Number(String(asset.price || "").replace(/[$,]/g, ""));
-    const source = values.length ? values : Number.isFinite(fallbackPrice) ? [fallbackPrice] : [0];
+    const values = (Array.isArray(asset.navHistory) ? asset.navHistory : []).filter((row) => Number(row.timestamp) >= cutoff).map((row) => Number(row.price)).filter((value) => Number.isFinite(value) && value > 0);
+    if (!values.length) return [];
+    const source = values;
     const low = Math.min(...source);
     const high = Math.max(...source);
     const padding = Math.max((high - low) * 0.1, high * 0.001, 0.01);
@@ -1384,7 +1384,7 @@ function App() {
               </div>
               <div className="chart">
                 <div className="chart-y">
-                  {chartYLabels.map((label, index) => <span key={index}>{label}</span>)}
+                  {(chartType === "candles" ? chartCandles.length >= 2 : Boolean(chartPoints)) && chartYLabels.map((label, index) => <span key={index}>{label}</span>)}
                 </div>
                 <svg
                   viewBox="0 0 728 90"
