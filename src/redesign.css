@@ -1309,3 +1309,17 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   .sl-app .theses-screen .history-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   .sl-app .theses-screen .history-row > span:nth-child(n) { display: flex !important; min-width: 0; overflow-wrap: anywhere; }
 }
+
+.journey-hint, .fallback-note { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.journey-hint { margin: 10px 0 0; }
+.fallback-note { margin: 8px 0 0; }
+.empty-book { padding: 0 20px 20px; }
+.empty-book .btn { margin-top: 12px; }
+.theses-jumps { display: flex; flex-wrap: wrap; gap: 8px; }
+.theses-jumps button { min-height: 36px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: 14px var(--f-ui); }
+.theses-screen [id] { scroll-margin-top: 16px; }
+.history-toggle { align-self: flex-start; margin: 16px 20px 8px; }
+@media (max-width: 760px) {
+  .theses-jumps { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .theses-jumps button { flex: 0 0 auto; white-space: nowrap; }
+}
