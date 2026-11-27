@@ -17,6 +17,7 @@ import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
 import { dataQualityScore, retainLoadedHistory } from "./data-quality.js";
+import { legacyProofScore } from "./legacy-proof-score.js";
 import { proofChangeBps, displayProofChange } from "./proof-change.js";
 import { paperPosition, paperPlanIsValid } from "./paper-validation.js";
 
@@ -869,7 +870,7 @@ function App() {
         selected,
         priceCents,
         changeBps,
-        displayedScore,
+        legacyProofScore({ ...asset, dataQuality: { ...asset.dataQuality, history: assetHistoryAvailable } }),
         { chainId: 84532 },
       );
       setTxHash(transaction.hash);
@@ -1818,7 +1819,7 @@ function App() {
               )}
               {notice && <p className="trade-notice">{notice}</p>}
               <p className="sim-note">
-                Records a thesis on Base Sepolia (84532). The contract's score field contains data availability, not asset risk. Requires testnet gas.
+                Records a thesis on Base Sepolia (84532). The contract retains its legacy heuristic score; it is not a validated asset-risk rating. Requires testnet gas.
               </p>
             </div>
           </section>
@@ -1906,7 +1907,7 @@ function App() {
                 </h2>
                 <p>
                   Research proofs read through the StockLens history proxy on
-                  Base Sepolia (84532). Scores from older versions used a different method; new scores measure data availability, not asset risk. B20 NAV remains on Base mainnet (8453).
+                  Base Sepolia (84532). Recorded contract scores use a legacy heuristic and are not validated asset-risk ratings. B20 NAV remains on Base mainnet (8453).
                 </p>
               </div>
               <a
