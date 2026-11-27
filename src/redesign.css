@@ -1,0 +1,228 @@
+/* StockLens redesign — loads after index.css; restyles without touching logic.
+   Direction: warm-paper research terminal, iris accent (DESIGN.md). */
+
+:root {
+  --paper: #f7f5f0;
+  --surface: #fdfcf9;
+  --ink: #1c1b4b;
+  --ink-2: #5a5673;
+  --ink-3: #8d89a3;
+  --line: #e6e1d6;
+  --iris: #6c5ce7;
+  --iris-soft: #a49bff;
+  --lav-wash: #efecfb;
+  --up: #1a9e6e;
+  --down: #d94f3a;
+  --accent-wash: rgba(108, 92, 231, 0.12);
+}
+[data-theme="dark"] {
+  --paper: #14131f;
+  --surface: #1c1a2b;
+  --ink: #f0eefc;
+  --ink-2: #b3aed0;
+  --ink-3: #7d7899;
+  --line: #2c2942;
+  --accent-wash: rgba(164, 155, 255, 0.16);
+}
+
+/* ---------- Fonts ---------- */
+body,
+button,
+input,
+select,
+textarea { font-family: "Onest", "Inter Tight", system-ui, sans-serif; }
+h1, h2, h3, .brand-wordmark, .compliance-title, .panel-head strong {
+  font-family: "Geist Mono", "DM Mono", ui-monospace, monospace;
+  letter-spacing: -0.03em;
+}
+
+/* ---------- Chart draw-in (signature) ---------- */
+.chart-draw polyline {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: chart-draw 1.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes chart-draw { to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .chart-draw polyline { animation: none; stroke-dashoffset: 0; }
+}
+
+/* ---------- Panel chrome ---------- */
+.panel {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(28, 27, 75, 0.05), 0 12px 32px -24px rgba(28, 27, 75, 0.25);
+}
+.panel:hover { box-shadow: 0 2px 4px rgba(28, 27, 75, 0.06), 0 18px 40px -24px rgba(28, 27, 75, 0.3); }
+
+/* ---------- Compliance gate ---------- */
+.compliance-shell, .compliance-card, #compliance {
+  background: var(--paper);
+}
+.compliance-card, #compliance .gate-card, #compliance > div > div {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 64px -32px rgba(28, 27, 75, 0.35);
+}
+.compliance-title { color: var(--ink); }
+#compliance p, #compliance small, #compliance label { color: var(--ink-2); }
+#compliance .kicker, .compliance-note { color: var(--ink-3); }
+.compliance-check input { accent-color: var(--iris); }
+.compliance-submit, .compliance-submit b {
+  background: var(--iris);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+}
+.compliance-submit { box-shadow: 0 8px 24px -8px rgba(108, 92, 231, 0.5); }
+.compliance-submit:hover { background: #5a4bd1; }
+.compliance-submit:focus-visible, button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
+  outline: 2px solid var(--iris);
+  outline-offset: 2px;
+}
+#compliance select, #compliance input[type="checkbox"] { accent-color: var(--iris); }
+#compliance select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  padding: 12px 14px;
+  min-height: 44px;
+}
+
+/* ---------- Buttons / chips ---------- */
+.demo-launch { position: relative; }
+.demo-launch .pulse-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--iris);
+  display: inline-block;
+  margin-right: 7px;
+  animation: pulse-soft 2.4s ease-in-out infinite;
+}
+@keyframes pulse-soft { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .demo-launch .pulse-dot { animation: none; } }
+.theme-toggle, .judge-primary, .side-link {
+  border-radius: 999px;
+}
+.paper-badge {
+  background: var(--lav-wash);
+  color: var(--iris);
+  border-radius: 999px;
+}
+.base-chip {
+  background: var(--lav-wash);
+  border-radius: 999px;
+}
+.base-chip i { background: var(--iris); }
+[data-theme="dark"] .brand-logo-light { display: none; }
+[data-theme="dark"] .brand-logo-dark { display: inline; }
+[data-theme="dark"] .brand-logo-dark { opacity: 0.92; }
+
+/* ---------- Watchlist rows ---------- */
+.watchlist-panel .asset-row + .asset-row,
+.watchlist-panel button + button { border-top: 1px solid var(--line); }
+.watchlist-panel [class*="row-"]:hover { background: var(--lav-wash); }
+.row-arrow { color: var(--ink-3); }
+.switch-asset { color: var(--iris); }
+
+/* ---------- Market data mode label ---------- */
+.status i { background: var(--up); }
+[data-mode="fallback"] .status i { background: var(--down); }
+
+/* ---------- Agent screen: current→target bars ---------- */
+.rebalance-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 16px 14px;
+}
+.rebalance-bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  min-width: 6px;
+  transition: width 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.rebalance-bar.current { background: var(--ink-3); opacity: 0.55; }
+.rebalance-bar.target { background: var(--iris); }
+.rebalance-summary strong, .rebalance-detail strong { font-variant-numeric: tabular-nums; }
+.rebalance-action.buy, .rebalance-detail .buy { color: var(--up); }
+.rebalance-action.sell, .rebalance-detail .sell { color: var(--down); }
+.rebalance-action.hold, .rebalance-detail .hold { color: var(--ink-3); }
+
+/* ---------- Proof chips / confidence ---------- */
+.confidence-chip, .agent-card .kicker, .proof .seal { color: var(--iris); background: var(--lav-wash); }
+
+/* ---------- Shared thesis page ---------- */
+.shared-thesis-topbar {
+  background: var(--paper);
+  border-bottom: 1px solid var(--line);
+}
+.shared-thesis-brand { color: var(--ink); font-family: "Geist Mono", "DM Mono", monospace; }
+.shared-thesis-brand span { color: var(--iris); }
+.shared-thesis-topbar > span { color: var(--ink-3); }
+
+.side-link, .research-journey a, .topbar small, .panel-foot span,
+.compliance-note, .status span, .asset-list small, .kicker {
+  color: var(--ink-2);
+}
+.research-journey > span, .watchlist-tools .count, .market-badge.pending,
+.asset-name small, .asset-quote small, .asset-quote .flat, .side-nav a,
+.workspace-count, .welcome-eyebrow, .panel-head small {
+  color: var(--ink-2);
+}
+
+/* ---------- Global contrast floor: darken every legacy muted grey ---------- */
+.workspace-label, .base-chip span, .side-bottom p, .balance-line, .balance-line b,
+.budget-header, .manual-budget, .trade-notice, .case-grid span, .portfolio-mini small,
+.portfolio-mini > span, .alert-row small, .timeline-row small, .shared-thesis-meta span,
+.shared-thesis-metrics span, .shared-thesis-card > span, .shared-thesis-proof > span,
+.shared-thesis-heading p, .shared-thesis-proof small, .theme-toggle, .market-select,
+.thesis-composer select, .workspace-actions select, .welcome-intro > p,
+.chart-toolbar > span, .chart-y span, .chart-x span, .chart-note, .kicker span,
+.compliance-card small, .agent-card small, .thesis-composer label,
+.workspace-actions span, .asset-quote .flat, .market-badge, .side-bottom small,
+.topbar .status span, .panel-foot, .watchlist-panel .panel-foot span {
+  color: #45426b !important;
+}
+.ranges button, .chart-modes button, .breadcrumb, .market-state span,
+.market-state small, .muted-label, .score-ring small, .score-row h3 span,
+.lens-metrics span, .lab-title, .simulator label, .sim-result span,
+.sim-note, footer, .score-row p, .overview-heading p, .asset-row small,
+.kicker, .selected-token div small, .alert-row button, .status,
+.chart-empty small, .chart-empty span, .chart-foot span, .asset-quote .flat,
+.change-tone.flat, .selected-quote .flat, .asset-row .asset-name small,
+.chart-y span, .chart-x span, .chart-note, .asset-row b {
+  color: #45426b !important;
+}
+[data-theme="dark"] .workspace-label, [data-theme="dark"] .base-chip span,
+[data-theme="dark"] .side-bottom p, [data-theme="dark"] .balance-line,
+[data-theme="dark"] .budget-header, [data-theme="dark"] .trade-notice,
+[data-theme="dark"] .case-grid span, [data-theme="dark"] .portfolio-mini small,
+[data-theme="dark"] .alert-row small, [data-theme="dark"] .timeline-row small,
+[data-theme="dark"] .shared-thesis-meta span, [data-theme="dark"] .shared-thesis-card > span,
+[data-theme="dark"] .shared-thesis-heading p, [data-theme="dark"] .theme-toggle,
+[data-theme="dark"] .market-select, [data-theme="dark"] .welcome-intro > p,
+[data-theme="dark"] .chart-toolbar > span, [data-theme="dark"] .chart-y span,
+[data-theme="dark"] .chart-x span, [data-theme="dark"] .kicker span,
+[data-theme="dark"] .agent-card small, [data-theme="dark"] .thesis-composer label,
+[data-theme="dark"] .workspace-actions span {
+  color: #c4bfdd !important;
+}
+
+/* ---------- Mobile: chips rail + bottom nav spacing ---------- */
+@media (max-width: 760px) {  .topbar { padding-top: max(env(safe-area-inset-top), 12px); }
+  .research-journey {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+  .research-journey::-webkit-scrollbar { display: none; }
+  .research-journey a { white-space: nowrap; flex: 0 0 auto; border-radius: 999px; }
+  .rebalance-summary { grid-template-columns: 1.4fr 1fr 1fr; }
+  .rebalance-summary .rebalance-action { display: none; }
+  .rebalance-detail { grid-template-columns: 1fr 1fr; }
+  body { overflow-x: hidden; }
+}
