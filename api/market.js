@@ -26,7 +26,8 @@ function normalize(token, index) {
   const [tone, color] = toneFor(symbol)
   const rawChange = token.change_24h ?? token.nav_change_24h ?? token.price_change_24h
   const hasChange = rawChange !== null && rawChange !== undefined && String(rawChange).trim() !== '' && Number.isFinite(Number(rawChange))
-  const change = hasChange ? `${Number(rawChange).toFixed(2)}%` : 'N/A'
+  const signedChange = Number(rawChange)
+  const change = hasChange ? `${signedChange > 0 ? '+' : ''}${signedChange.toFixed(2)}%` : 'N/A'
   const updatedAt = token.nav_price_updated_at || null
   const dataQuality = { nav: true, history: Array.isArray(token.nav_history) && token.nav_history.length >= 3, change: hasChange }
   const score = dataQualityScore({ price, navUpdatedAt: updatedAt, dataQuality })

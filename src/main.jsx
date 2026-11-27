@@ -14,20 +14,16 @@ import "@fontsource/onest/400.css";
 import "@fontsource/onest/500.css";
 import "@fontsource/onest/600.css";
 import "@fontsource/onest/700.css";
+import "@fontsource/geist/400.css";
+import "@fontsource/geist/500.css";
+import "@fontsource/geist/600.css";
 import "@fontsource/geist-mono/400.css";
 import "@fontsource/geist-mono/500.css";
-import "@fontsource/geist-mono/600.css";
-import "@fontsource/inter-tight/400.css";
-import "@fontsource/inter-tight/500.css";
-import "@fontsource/inter-tight/600.css";
-import "@fontsource/inter-tight/700.css";
-import "@fontsource/dm-mono/400.css";
-import "@fontsource/dm-mono/500.css";
 import "./index.css";
 import "./b20.css";
 import "./market-layout.css";
 import "./redesign.css";
-import NumberFlow from "@number-flow/react";
+import { TerminalShell } from "./terminal-shell.jsx";
 import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
@@ -221,7 +217,7 @@ function SharedThesisPage({ thesis, marketAssets, onExit }) {
     }
   }
   return (
-    <div className="shared-thesis-page">
+    <div className="shared-thesis-page sl-app">
       <header className="shared-thesis-topbar"><a className="shared-thesis-brand" href="/">STOCK<span>LENS</span></a><span>SHARED RESEARCH / PAPER ONLY</span></header>
       <main className="shared-thesis-main">
         <div className="kicker"><span>PUBLIC THESIS</span> / {thesis.symbol}</div>
@@ -442,7 +438,7 @@ function App() {
   const [marketFilter, setMarketFilter] = useState("all");
   const [marketSort, setMarketSort] = useState("score");
   const [range, setRange] = useState("1M");
-  const [chartType, setChartType] = useState("line");
+  const [chartType, setChartType] = useState("area");
   const [budget, setBudget] = useState(1000);
   const [budgetMode, setBudgetMode] = useState("manual");
   const [usdcBalance, setUsdcBalance] = useState(null);
@@ -469,6 +465,12 @@ function App() {
   const [portfolioAgentLoading, setPortfolioAgentLoading] = useState(false);
   const [portfolioAgentError, setPortfolioAgentError] = useState("");
   const [expandedRebalance, setExpandedRebalance] = useState(null);
+  const [screen, setScreen] = useState("markets");
+  const [agentApplied, setAgentApplied] = useState(false);
+  const [agentMorphing, setAgentMorphing] = useState(false);
+  const [applyingPlan, setApplyingPlan] = useState(false);
+  const [bookFlash, setBookFlash] = useState(false);
+  const [portfolioUndo, setPortfolioUndo] = useState(null);
   const [shareLink, setShareLink] = useState(null);
   const [thesisHistory, setThesisHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -503,6 +505,8 @@ function App() {
   const assetHistoryAvailable = Array.isArray(asset.navHistory) && asset.navHistory.filter(row => Number.isFinite(Number(row?.price)) && Number(row.price) > 0).length >= 3;
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.content = theme === "dark" ? "#141413" : "#f7f7f5";
     try { window.localStorage.setItem("stocklens-theme", theme); } catch { /* theme persistence is optional */ }
   }, [theme]);
   const filteredMarketAssets = useMemo(() => {
@@ -630,6 +634,12 @@ function App() {
   useEffect(() => {
     try { window.localStorage.setItem("stocklens-paper-portfolio-v1", JSON.stringify(portfolio)); } catch { setNotice("Paper portfolio could not be saved in this browser."); }
   }, [portfolio]);
+
+  useEffect(() => {
+    setAgentApplied(false);
+    setAgentMorphing(false);
+    setApplyingPlan(false);
+  }, [portfolioPlan]);
 
   useEffect(() => {
     setWallet(address || "");
@@ -951,9 +961,31 @@ function App() {
       setNotice("A positive budget and available NAV for every target are required before applying the plan.");
       return;
     }
-    setPortfolio(targetPortfolio);
-    setPortfolioPreview(false);
-    setNotice(`Portfolio target applied to the local paper book: ${targetPortfolio.length} positions. No order was sent.`);
+    const previous = portfolio;
+    const next = targetPortfolio;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    setApplyingPlan(true);
+    setAgentMorphing(true);
+    window.setTimeout(() => {
+      setPortfolioUndo(previous);
+      setPortfolio(next);
+      setAgentApplied(true);
+      setBookFlash(true);
+      setApplyingPlan(false);
+      setPortfolioPreview(false);
+      setNotice("Applied to paper book. No orders placed, paper only.");
+      window.setTimeout(() => setBookFlash(false), reduceMotion ? 0 : 1600);
+    }, reduceMotion ? 0 : 900 + Math.max(rebalanceRows.length, 1) * 40);
+  }
+
+  function undoPortfolioApply() {
+    if (!portfolioUndo) return;
+    setPortfolio(portfolioUndo);
+    setPortfolioUndo(null);
+    setAgentApplied(false);
+    setAgentMorphing(false);
+    setBookFlash(false);
+    setNotice("Paper book restored to the previous allocation.");
   }
 
   function removePosition(symbol) {
@@ -1000,6 +1032,7 @@ function App() {
   }
 
   function startJudgeDemo() {
+    setScreen("markets");
     const firstLive = Object.entries(marketAssets).find(([, item]) => hasNav(item))?.[0] || Object.keys(marketAssets)[0];
     if (firstLive) {
       setSelected(firstLive);
@@ -1017,6 +1050,7 @@ function App() {
         return;
       }
       setJudgeStep(4);
+      setScreen("agent");
       setNotice("Judge Mode is ready. Review the rebalance, apply it to your paper portfolio, or optionally record a thesis.");
     }, 1350);
   }
@@ -1275,760 +1309,28 @@ function App() {
   }
 
   return (
-    <div className="terminal-app">
-      {!complianceAccepted && (
-        <div className="compliance-backdrop" role="dialog" aria-modal="true" aria-labelledby="compliance-title">
-          <div className="welcome-layout">
-            <section className="welcome-intro" aria-labelledby="welcome-title">
-              <div className="welcome-brand">STOCK<span>LENS</span> <small> / RESEARCH TERMINAL</small></div>
-              <div className="welcome-eyebrow">TOKENIZED STOCK RESEARCH / BASE</div>
-              <h1 id="welcome-title">From market data<br />to a testable thesis.</h1>
-              <p>Explore B20 reference NAVs, challenge an AI research brief, and build a paper portfolio. Record a thesis on Base Sepolia if you choose.</p>
-              <div className="welcome-steps" aria-label="How StockLens works">
-                <div><b>01</b><span><strong>RESEARCH</strong><small>Explore NAV &amp; AI context</small></span></div>
-                <div><b>02</b><span><strong>SIMULATE</strong><small>Test a paper allocation</small></span></div>
-                <div><b>03</b><span><strong>VERIFY</strong><small>Optionally record a thesis</small></span></div>
-              </div>
-              <div className="welcome-context"><span>BASE MAINNET / NAV DATA</span><span>BASE SEPOLIA / OPTIONAL PROOF</span></div>
-            </section>
-          <form className="compliance-card" onSubmit={acceptCompliance}>
-            <div className="compliance-kicker">01 / BEFORE YOU ENTER</div>
-            <h2 id="compliance-title">Research mode only.</h2>
-            <p>
-              StockLens is a research terminal for tokenized stock reference data on Base.
-              All positions are simulated; the app does not execute orders or custody assets.
-            </p>
-            <label className="compliance-label" htmlFor="compliance-country">Your location</label>
-            <select
-              id="compliance-country"
-              value={complianceCountry}
-              onChange={(event) => {
-                setComplianceCountry(event.target.value);
-                setComplianceError("");
-              }}
-            >
-              <option value="">Select country / region</option>
-              <option value="ID">Indonesia</option>
-              <option value="SG">Singapore</option>
-              <option value="AU">Australia</option>
-              <option value="GB">United Kingdom</option>
-              <option value="EU">European Union</option>
-              <option value="US">United States</option>
-              <option value="OTHER">Other</option>
-            </select>
-            <label className="compliance-check">
-              <input
-                type="checkbox"
-                checked={complianceConfirmed}
-                onChange={(event) => {
-                  setComplianceConfirmed(event.target.checked);
-                  setComplianceError("");
-                }}
-              />
-              <span>I understand this is paper-only research, not financial advice, and I will not use it where restricted.</span>
-            </label>
-            {complianceError && <p className="compliance-error">{complianceError}</p>}
-            <button className="compliance-submit" type="submit">Enter research terminal <b>↗</b></button>
-            <small className="compliance-note">Access is blocked for US users/persons. Do not connect funds or place live trades.</small>
-          </form>
-          </div>
-        </div>
-      )}
-      <aside className="sidebar">
-        <a className="brand" href="#top">
-          <StockLensLogo />
-        </a>
-        <div className="workspace-label">
-          WORKSPACE <b>01</b>
-        </div>
-        <nav className="side-nav">
-          <a className="active" href="#overview">
-            Overview
-          </a>
-          <a href="#watchlist">
-            Markets
-          </a>
-          <a href="#lens">
-            Risk lens
-          </a>
-          <a href="#simulate">Paper lab</a>
-          <a href="#thesis-workspace">Thesis workspace</a>
-          <a href="#thesis-activity">Activity center</a>
-        </nav>
-        <div className="side-bottom">
-          <div className="base-chip">
-            <i /> B20 BASE <span>8453</span>
-          </div>
-          <p className="chain-note">Paper registry / wallet: Base Sepolia <b>84532</b></p>
-          <p>Research surface for tokenized stock experiments.</p>
-          <a href="#simulate" className="side-link">
-            Open paper lab <b>↗</b>
-          </a>
-        </div>
-      </aside>
-      <div className="main-column" id="top">
-        <header className="topbar">
-          <div className="mobile-brand">
-            <StockLensLogo compact />
-            <span>/ TERMINAL</span>
-          </div>
-          <div className="breadcrumb">
-                Research / <b>Market overview</b>
-          </div>
-          <div className="top-actions">
-            <button className="theme-toggle demo-launch" onClick={startJudgeDemo} disabled={judgeRunning || portfolioAgentLoading}><i className="pulse-dot" aria-hidden="true" />{judgeRunning ? "Running demo…" : "Start demo"}</button>
-            {judgeStep === 4 && <a href="#simulate">View plan</a>}
-                <span className="paper-badge">Paper only</span>
-            <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
-              {theme === "dark" ? "Light" : "Dark"}
-            </button>
-            <span className="status">
-              <i /> {wallet ? "Wallet ready" : dataMode}
-            </span>
-            <WalletConnectButton />
-          </div>
-        </header>
-        <main>
-          {judgeStep > 0 && (
-            <section className="judge-demo" aria-label="Demo progress" aria-live="polite">
-              <div className="judge-demo-head"><div><span className="kicker">Paper-only walkthrough</span><strong>Explore StockLens</strong></div></div>
-              <div className="judge-steps">
-                {["Select asset", "Read NAV", "Build allocation", "Review plan"].map((label, index) => (
-                  <div key={label} className={judgeStep === index + 1 ? "active" : ""} style={{ padding: "12px", fontSize: "12px" }}>
-                    {label} {judgeStep > index + 1 ? "✓" : ""}
-                  </div>
-                ))}
-              </div>
-              <div className="judge-demo-body"><p>{judgeRunning ? "Preparing the portfolio plan…" : judgeStep === 4 ? "Review the proposed allocation in Paper lab." : "The plan could not be prepared. Start the demo again."}</p></div>
-              {judgeStep === 4 && <div className="judge-demo-actions"><a className="judge-primary" href="#simulate">View portfolio plan ↗</a></div>}
-            </section>
-          )}
-          <div id="overview" />
-          <nav className="research-journey" aria-label="Research steps">
-            <span>RESEARCH FLOW</span>
-            <a href="#watchlist">01 Select an asset</a>
-            <a href="#lens">02 Review the brief</a>
-            <a href="#thesis-workspace">03 Write a thesis</a>
-            <a href="#simulate">04 Simulate a portfolio</a>
-          </nav>
-          <section id="watchlist" className="research-grid">
-            <div className="watchlist-panel panel">
-              <div className="panel-head">
-                <div>
-                  <h2>Watchlist</h2>
-                </div>
-                  <div className="watchlist-tools">
-                    <label className="market-search" id="asset-search">
-                      <span>Search</span>
-                      <input value={marketSearch} onChange={(event) => setMarketSearch(event.target.value)} placeholder="Ticker or name" aria-label="Search markets" />
-                    </label>
-                    <select className="market-select" value={marketFilter} onChange={(event) => setMarketFilter(event.target.value)} aria-label="Market filter"><option value="all">All</option><option value="nav">NAV available</option><option value="trending">Trending</option></select>
-                    <select className="market-select" value={marketSort} onChange={(event) => setMarketSort(event.target.value)} aria-label="Market sort"><option value="score">Score</option><option value="price">Price</option><option value="supply">Supply</option><option value="risk">Risk</option><option value="updated">Updated</option></select>
-                    <span className="count">{filteredMarketAssets.length}/{Object.keys(marketAssets).length} ASSETS</span>
-                  </div>
-              </div>
-              <div className="asset-list">
-                {filteredMarketAssets.map(([symbol, item]) => (
-                  <button
-                    key={symbol}
-                    className={`asset-row ${symbol === selected ? "active" : ""}`}
-                    onClick={() => pick(symbol)}
-                  >
-                    <AssetIcon symbol={symbol} />
-                    <span className="asset-name">
-                      <b>{symbol}</b>
-                      <small>
-                        {item.name} / {item.sector}
-                      </small>
-                      <span className={`market-badge ${navFreshness(item, marketClock) === "current" ? "live" : "pending"}`}>{({ current: "NAV CURRENT", delayed: "NAV DELAYED", unknown: "NAV TIME UNKNOWN", unavailable: "NAV UNAVAILABLE" })[navFreshness(item, marketClock)]}</span>
-                      {hasNav(item) && <span className={`market-badge ${hasHistory(item) ? "live" : "pending"}`}>{hasHistory(item) ? "HISTORY AVAILABLE" : "HISTORY PENDING"}</span>}
-                    </span>
-                    <span className="asset-price">
-                      <b>{item.price}</b>
-                      <small
-                        className={changeTone(item.change)}
-                      >
-                        {item.change === "N/A" ? "—" : item.change}
-                      </small>
-                    </span>
-                    <span className="row-arrow">↗</span>
-                  </button>
-                ))}
-              </div>
-              <div className="panel-foot">
-                <span>Curated universe</span>
-                <span>NAV time {asset.navUpdatedAt ? new Date(asset.navUpdatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "unavailable"}</span>
-              </div>
-              <div className="panel-foot"><span>{dataMode === "MARKET UPDATE FAILED" || dataMode === "NAV UNAVAILABLE" ? "Market refresh unavailable" : "Refreshes every minute while open"}</span><span>NAV delayed after 1 hour</span></div>
-            </div>
-            <div className="chart-panel panel">
-              <a className="switch-asset" href="#asset-search" onClick={() => document.querySelector(".market-search input")?.focus()}>Search assets ↓</a>
-              <div className="panel-head chart-head">
-                <div>
-                  <span className="kicker">
-                    <span>Selected asset</span> / {asset.sector}
-                  </span>
-                  <h2>
-                    {selected} <small>{asset.name}</small>
-                  </h2>
-                </div>
-                <div className="asset-quote">
-                  <strong>{asset.price}</strong>
-                  <small>Latest NAV · {asset.time}</small>
-                  <span
-                    className={changeTone(asset.change)}
-                  >
-                    {asset.change === "N/A" ? "— No comparison price" : asset.change}
-                  </span>
-                </div>
-              </div>
-              <div className="chart-toolbar">
-                <span>NAV / Base mainnet</span>
-                <div className="chart-controls">
-                  <div className="chart-modes">
-                    {[
-                      ["line", "LINE"],
-                      ["area", "AREA"],
-                      ["candles", "CANDLE"],
-                    ].map(([value, label]) => (
-                      <button
-                        key={value}
-                        disabled={value === "candles" && !chartCandles.length}
-                        className={chartType === value ? "active" : ""}
-                        onClick={() => setChartType(value)}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="ranges">
-                    {["1W", "1M", "3M", "1Y"].map((item) => (
-                      <button
-                        key={item}
-                        className={range === item ? "active" : ""}
-                        onClick={() => setRange(item)}
-                      >
-                        {item}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <div className="chart">
-                <div className="chart-y">
-                  {(chartType === "candles" ? chartCandles.length >= 2 : Boolean(chartPoints)) && chartYLabels.map((label, index) => <span key={index}>{label}</span>)}
-                </div>
-                <svg
-                  key={`${selected}-${chartType}-${range}-${chartPoints || chartCandles.length}`}
-                  className="chart-svg chart-draw"
-                  viewBox="0 0 728 90"
-                  preserveAspectRatio="none"
-                  role="img"
-                  aria-label={`${chartType} chart for ${selected} over ${range}`}
-                >
-                  {chartType === "candles" && chartCandles.length >= 2 ? (
-                    <CandleChart candles={chartCandles} color={asset.color} range={range} />
-                  ) : chartType !== "candles" && chartPoints ? (
-                    <>
-                      <polyline
-                        points={`${chartPoints.split(" ")[0].split(",")[0]},90 ${chartPoints} ${chartPoints.split(" ").at(-1).split(",")[0]},90`}
-                        fill={chartType === "area" ? "var(--accent-wash)" : "none"}
-                      />
-                      <polyline
-                        points={chartPoints}
-                        fill="none"
-                        pathLength="1"
-                        stroke={asset.color}
-                        strokeWidth="2"
-                        vectorEffect="non-scaling-stroke"
-                      />
-                    </>
-                  ) : null}
-                </svg>
-                {chartType === "candles" && chartCandles.length < 2 && (
-                  <div className="chart-empty" role="status" aria-live="polite">
-                    <strong>Collecting daily NAV history</strong>
-                    <span>{chartCandles.length} daily candle available</span>
-                    <small>At least 2 days of NAV observations are needed to display a candle chart.</small>
-                    <small>Switch to Line to view the available snapshots.</small>
-                  </div>
-                )}
-                {chartType !== "candles" && !chartPoints && (
-                  <div className="chart-empty" role="status" aria-live="polite">
-                    <div className="chart-empty-mark" aria-hidden="true"><i /><i /><i /><i /><i /></div>
-                    <strong>{chartHistoryMeta.count < 3 ? "COLLECTING NAV HISTORY" : "HISTORY RANGE UNAVAILABLE"}</strong>
-                    <span>{chartHistoryMeta.count} snapshot{chartHistoryMeta.count === 1 ? "" : "s"} in {range}</span>
-                    <small>{chartHistoryMeta.count < 3 ? "Need 3 observations before showing a trend" : "No observations in this timeframe"}</small>
-                    <small>Last observation · {chartHistoryMeta.latest}</small>
-                    <b>Current reference · {asset.price}</b>
-                  </div>
-                )}
-                <div className="chart-x">
-                  {chartLabels.map((label) => <span key={label}>{label}</span>)}
-                </div>
-              </div>
-              <div className="chart-foot">
-                <span>
-                  <i
-                    className="legend-dot"
-                    style={{ background: asset.color }}
-                  />{" "}
-                  {chartType === "candles"
-                    ? chartCandles.length === 1 ? "1 daily candle / more days needed" : chartCandles.length ? "Daily OHLC / NAV snapshots" : "OHLC / awaiting NAV history"
-                    : "B20 NAV reference"}
-                </span>
-                <span>
-                  {chartHistoryMeta.period || "Awaiting NAV history"} · {chartHistoryMeta.count} snapshots · UTC
-                </span>
-              </div>
-            </div>
-          </section>
-          <section id="lens" className="lens-grid">
-            <div className="thesis-copy">
-              <div className="kicker">
-                <span>03</span> INTELLIGENCE LAYER
-              </div>
-              <h2>
-                What is the
-                <br />
-                <em>thesis?</em>
-              </h2>
-              <p>
-                Numbers become useful when they are placed in context. This
-                brief compresses the signal into something you can challenge.
-              </p>
-              <div className="method-note">
-                <span>Method note</span>
-                <b>Data availability · not asset risk</b>
-                <small>
-                  Model output is illustrative and not financial advice.
-                </small>
-              </div>
-            </div>
-            <div className="lens-panel panel">
-              <div className="panel-head">
-                <span className="kicker">
-                  <span>AI brief</span> / {selected}
-                </span>
-                <span className="model-tag">
-                  {`${modelLabel}${matchingInsight?.confidence != null ? ` · CONF ${matchingInsight.confidence}/100` : ""}`}
-                </span>
-              </div>
-              <div className="score-row">
-                <div
-                  className="score-ring"
-                  style={{
-                    "--score": `${displayedScore * 3.6}deg`,
-                    "--ring": asset.color,
-                  }}
-                >
-                  <strong>{displayedScore}</strong>
-                  <small>/100</small>
-                </div>
-                <div>
-                  <span className="muted-label">DATA AVAILABILITY / NOT ASSET RISK</span>
-                  <h3>
-                    Asset risk <span>not assessed</span>
-                  </h3>
-                  <p>{riskLoading || !matchingInsight ? (assetNavStatus === "delayed" ? "NAV is delayed; refreshing research context." : assetNavStatus === "unknown" ? "NAV timestamp is unavailable; refreshing research context." : assetNavStatus === "unavailable" ? "NAV is unavailable; refreshing research context." : "Updating research context…") : riskBriefs[selected]}</p>
-                </div>
-              </div>
-              <button
-                className="ai-details-toggle"
-                type="button"
-                aria-expanded={aiDetailsOpen}
-                onClick={() => setAiDetailsOpen((open) => !open)}
-              >
-                <span>{aiDetailsOpen ? "HIDE RESEARCH DETAILS" : "VIEW RESEARCH DETAILS"}</span>
-                <b>{aiDetailsOpen ? "−" : "+"}</b>
-              </button>
-              <div className="research-next"><span>Next for {selected}</span><a href="#thesis-workspace">Write a thesis ↗</a><a href="#simulate">Simulate a position ↗</a></div>
-              {aiDetailsOpen && (
-                <div className="ai-details">
-                  <div className="ai-signals">
-                    <div><span>Catalysts</span><b>{(insight.catalysts || []).join(" · ") || "No catalyst data"}</b></div>
-                    <div><span>Risks</span><b>{(insight.risks || []).join(" · ") || "No risk data"}</b></div>
-                  </div>
-                  <small className="ai-source">SOURCE / {insight.source || "Unknown"} · BASIS / {scoreBasis}</small>
-                  <div className="case-grid">
-                    <div>
-                      <span>Bull case</span>
-                      <b>{asset.bull}</b>
-                    </div>
-                    <div>
-                      <span>Bear case</span>
-                      <b>{asset.bear}</b>
-                    </div>
-                  </div>
-                  <div className="lens-metrics">
-                    <div>
-                      <span>Momentum</span>
-                      <b className={changeTone(asset.change)}>
-                        {asset.change === "N/A" ? "Unavailable" : asset.change.startsWith("+") ? "Positive" : "Cooling"}
-                      </b>
-                    </div>
-                    <div>
-                      <span>Liquidity</span>
-                      <b>{asset.volume}</b>
-                    </div>
-                    <div>
-                      <span>Network</span>
-                      <b>8453 NAV / 84532 PAPER</b>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
-          <section id="simulate" className="lab-grid">
-            <div>
-              <div className="kicker">
-                <span>04</span> PAPER LAB
-              </div>
-              <h2>
-                Test the
-                <br />
-                <em>conviction.</em>
-              </h2>
-              <p>
-                Model a position without connecting a wallet or placing an
-                order. A safe surface for exploring the thesis.
-              </p>
-              {portfolio.length > 0 && (
-                <div className="portfolio-mini">
-                  <span>Local paper portfolio</span>
-                  <div className="portfolio-totals"><b><NumberFlow value={portfolioMetrics.total} format={{ style: "currency", currency: "USD" }} /></b><strong className={Math.abs(portfolioMetrics.pnl) < 0.005 ? "neutral-change" : portfolioMetrics.pnl >= 0 ? "up" : "down"}>{Math.abs(portfolioMetrics.pnl) < 0.005 ? <NumberFlow value={0} format={{ style: "currency", currency: "USD" }} /> : <NumberFlow value={portfolioMetrics.pnl} format={{ style: "currency", currency: "USD", signDisplay: "always" }} />} P/L</strong></div>
-                  {portfolioMetrics.rows.map((item) => (
-                    <div key={item.symbol}>
-                      <b>{item.symbol}</b>
-                      <small>
-                        {formatUnits(item.units)} units · {formatUSD(item.currentValue)} value
-                      </small>
-                      <strong className={item.pnl >= 0 ? "up" : "down"}>
-                        {Math.abs(item.pnl) < 0.005 ? "—" : `${item.pnl >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.pnl))}`}
-                      </strong>
-                      <button className="remove-position" onClick={() => removePosition(item.symbol)} aria-label={`Remove ${item.symbol}`}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <div className="agent-card">
-                <div className="agent-card-head">
-                  <span>Portfolio agent</span>
-                  <b>{portfolioPlan ? portfolioPlan.regime : "READY"}</b>
-                </div>
-                {portfolioPlan && <div className="agent-meta"><span>Confidence <b>{portfolioPlan.confidence ?? "—"}/100</b></span><span>Universe <b>{Object.keys(marketAssets).length} B20</b></span></div>}
-                {portfolioPlan && <p>Allocation uses available data; data availability is not an assessment of asset risk.</p>}
-                {portfolioPlan && <p role="status">Source: {portfolioPlan.source || "Unknown"}{portfolioPlan.fallback ? ` · Fallback reason: ${portfolioPlan.fallbackReason || "Unavailable"}` : ""}</p>}
-                <p>
-                  Analyze the full B20 watchlist and paper holdings to propose target allocations and rebalancing steps.
-                </p>
-                <button className="agent-button" onClick={runPortfolioAgent} disabled={portfolioAgentLoading}>
-                  {portfolioAgentLoading ? "AGENT THINKING…" : "RUN PORTFOLIO AGENT"} <b>↗</b>
-                </button>
-                {portfolioAgentError && <small className="agent-error">{portfolioAgentError}</small>}
-                {portfolioPlan && (
-                  <div className="agent-plan">
-                    <strong>{portfolioPlan.summary}</strong>
-                    {largestMove && <div className="largest-move"><small>Largest change by value</small><strong>{largestMove.symbol} · {largestMove.currentPercent.toFixed(1)}% → {largestMove.targetPercent}%</strong><span>{largestMove.deltaValue < 0 ? "Reduce" : largestMove.deltaValue > 0 ? "Add" : "Hold"} {formatUSD(Math.abs(largestMove.deltaValue))}</span><p>{largestMove.reason}</p></div>}
-                    <button className="apply-agent-button" onClick={() => setPortfolioPreview(true)}>Preview target changes ↗</button>
-                    <details><summary>All {rebalanceRows.length} allocations</summary>
-                    <div className="rebalance-table" aria-label="Paper portfolio rebalance diff">
-                      <div className="rebalance-head"><span>Asset</span><span>Current</span><span>Target</span><span>Delta</span><span>Action</span></div>
-                      {rebalanceRows.map((item) => (
-                        <div key={item.symbol} className={`rebalance-row ${expandedRebalance === item.symbol ? "expanded" : ""}`}>
-                          <button className="rebalance-summary" type="button" onClick={() => setExpandedRebalance((current) => current === item.symbol ? null : item.symbol)} aria-expanded={expandedRebalance === item.symbol}>
-                            <span><b>{item.symbol}</b><small>{item.reason}</small></span>
-                            <strong>{item.currentPercent.toFixed(1)}%</strong>
-                            <strong>{item.targetPercent}%</strong>
-                            <strong className={item.delta >= 0 ? "up" : "down"}>{item.delta >= 0 ? "+" : ""}{item.delta.toFixed(1)}%</strong>
-                            <em className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</em>
-                          </button>
-                          <div className="rebalance-detail">
-                            <div><span>Current value</span><strong>{formatUSD(item.currentValue)}</strong></div>
-                            <div><span>Target value</span><strong>{formatUSD(item.targetValue)}</strong></div>
-                            <div><span>Delta value</span><strong className={Math.abs(item.deltaValue) < 0.005 ? "neutral-change" : item.deltaValue >= 0 ? "up" : "down"}>{Math.abs(item.deltaValue) < 0.005 ? "—" : `${item.deltaValue >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.deltaValue))}`}</strong></div>
-                            <div><span>Action</span><strong className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</strong></div>
-                          </div>
-                          <div className="rebalance-bars" aria-hidden="true">
-                            <span className="rebalance-bar current" style={{ width: `${Math.min(100, item.currentPercent)}%` }} />
-                            <span className="rebalance-bar target" style={{ width: `${Math.min(100, item.targetPercent)}%` }} />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <span className="agent-label">Rebalance actions</span>
-                    <ul>
-                      {portfolioPlan.actions.map((action) => <li key={action}>{action}</li>)}
-                    </ul>
-                    <small className="agent-note">{portfolioPlan.rebalanceNote} · {portfolioPlan.paperOnly ? "PAPER ONLY" : "REVIEW BEFORE USE"}</small>
-                    </details>
-                    {portfolioPreview && (
-                      <div className="portfolio-preview" aria-label="Paper portfolio target preview">
-                        <div className="portfolio-preview-head"><span>Apply target preview</span><b>${Number(budget).toLocaleString()} paper budget</b></div>
-                        <p>Review the notional changes below. Your paper book stays unchanged until confirmation.</p>
-                        <div className="preview-table">
-                          <div className="preview-head"><span>Asset</span><span>Current</span><span>Target</span><span>Delta</span><span>Action</span></div>
-                          {previewRows.filter((item) => item.action !== "HOLD" || item.currentValue > 0).map((item) => (
-                            <div key={item.symbol}>
-                              <b>{item.symbol}</b>
-                              <strong>{formatUSD(item.currentValue)}</strong>
-                              <strong>{formatUSD(item.targetValue)}</strong>
-                              <strong className={Math.abs(item.deltaValue) < 0.005 ? "neutral-change" : item.deltaValue >= 0 ? "up" : "down"}>{Math.abs(item.deltaValue) < 0.005 ? "—" : `${item.deltaValue >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.deltaValue))}`}</strong>
-                              <em className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</em>
-                            </div>
-                          ))}
-                        </div>
-                        <div className="preview-actions"><button className="preview-cancel" onClick={() => setPortfolioPreview(false)}>Cancel</button><button className="preview-confirm" onClick={applyPortfolioPlan}>Confirm apply ↗</button></div>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="simulator panel">
-              <div className="lab-title">
-                <span>Position builder</span>
-                <b>{wallet ? "PAPER BASE SEPOLIA / 84532" : "PAPER ONLY / NO WALLET REQUIRED"}</b>
-              </div>
-              <div className="selected-token">
-                <AssetIcon symbol={selected} />
-                <div>
-                  <b>{selected}</b>
-                  <small>
-                    {asset.name} / {asset.price}
-                  </small>
-                </div>
-                <span className="token-network">B20 / 8453</span>
-                {asset.contractAddress && (
-                  <a
-                    className="token-contract"
-                    href={`https://basescan.org/token/${asset.contractAddress}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    B20 {asset.contractAddress.slice(0, 6)}…{asset.contractAddress.slice(-4)} ↗
-                  </a>
-                )}
-              </div>
-              <div className="budget-header">
-                <span>Paper budget / USDC</span>
-                <output>${Number(budget).toLocaleString()}</output>
-              </div>
-              <div className="balance-line">
-                <span>Available balance</span>
-                <b>{usdcBalance === null ? "Connect wallet to read USDC" : `${usdcBalance.toLocaleString(undefined, { maximumFractionDigits: 2 })} USDC`}</b>
-              </div>
-              <div className="budget-presets">
-                {[25, 50, 100].map((percent) => (
-                  <button key={percent} className={budgetMode === `${percent}%` ? "active" : ""} disabled={!usdcBalance} onClick={() => chooseBudget(percent)}>{percent}%</button>
-                ))}
-                <button className={budgetMode === "manual" ? "active" : ""} onClick={() => setBudgetMode("manual")}>MANUAL</button>
-              </div>
-              {budgetMode === "manual" ? (
-                <label className="manual-budget">
-                  ENTER USDC
-                  <input type="number" min="0" max={usdcBalance || 10000} step="0.01" value={budget} onChange={(e) => setBudget(Math.min(usdcBalance ?? 10000, Math.max(0, Number(e.target.value) || 0)))} />
-                </label>
-              ) : null}
-              <div className="sim-result">
-                <div>
-                  <span>Est. units</span>
-                  <strong>{formatUnits(allocation)}</strong>
-                </div>
-                <div>
-                  <span>Notional</span>
-                  <strong>${Number(budget).toLocaleString()}</strong>
-                </div>
-              </div>
-              <button className="run-button" onClick={runSimulation}>
-                {isSimulating ? "CALCULATING…" : "RUN PAPER TRADE"} <b>↗</b>
-              </button>
-              <WalletConnectButton className="wallet-inline" />
-              <button className="chain-button" onClick={proveOnchain}>
-                {isSending ? "WAITING FOR WALLET…" : "RECORD THESIS ONCHAIN"}{" "}
-                <b>↗</b>
-              </button>
-              {txHash && (
-                <a
-                  className="tx-link"
-                  href={`https://sepolia.basescan.org/tx/${txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  VIEW CONTRACT TX / {txHash.slice(0, 10)}…{txHash.slice(-8)}
-                </a>
-              )}
-              {notice && <p className="trade-notice">{notice}</p>}
-              <p className="sim-note">
-                Records a thesis on Base Sepolia (84532). The contract retains its legacy heuristic score; it is not a validated asset-risk rating. Requires testnet gas.
-              </p>
-            </div>
-          </section>
-          <section id="thesis-workspace" className="thesis-workspace-section">
-            <div className="history-heading">
-              <div>
-                <div className="kicker"><span>05</span> RESEARCH MEMORY</div>
-                <h2>Thesis <em>workspace.</em></h2>
-                <p>Turn a one-off signal into a trackable paper thesis. Save the context, conviction, target, and status before the market moves.</p>
-              </div>
-              <span className="workspace-count">{thesisWorkspace.length} SAVED THESIS</span>
-            </div>
-            <div className="thesis-workspace-grid">
-              <div className="thesis-composer panel">
-                <div className="workspace-panel-head"><span>New thesis</span><b>{selected} / {asset.price}</b></div>
-                <label>THESIS TITLE
-                  <input value={thesisTitle} onChange={(event) => setThesisTitle(event.target.value)} placeholder={`${selected} setup / e.g. momentum continuation`} />
-                </label>
-                <label>WHAT ARE YOU WATCHING?
-                  <textarea value={thesisNote} onChange={(event) => setThesisNote(event.target.value)} placeholder="Write the reason, catalyst, invalidation, or what would change your mind." rows="4" />
-                </label>
-                <div className="thesis-form-row">
-                  <label>CONVICTION
-                    <select value={thesisConviction} onChange={(event) => setThesisConviction(event.target.value)}>
-                      <option value="1">01 / exploratory</option><option value="2">02 / forming</option><option value="3">03 / measured</option><option value="4">04 / strong</option><option value="5">05 / highest</option>
-                    </select>
-                  </label>
-                  <div className="thesis-context"><span>DATA AVAILABILITY</span><b>{displayedScore}/100 · Risk not assessed</b><small>{modelLabel}</small></div>
-                </div>
-                <button className="workspace-save" type="button" onClick={saveThesis}>SAVE THESIS TO WORKSPACE <b>↗</b></button>
-                <small className="workspace-note">Saved locally in this browser. No order, custody, or financial advice.</small>
-              </div>
-              <div className="thesis-list-panel panel">
-              <div className="workspace-panel-head"><span>Active research</span><b>OUTCOME / STATUS</b></div>
-                {thesisWorkspace.length === 0 ? (
-                  <div className="workspace-empty"><strong>NO THESIS SAVED</strong><span>Select an asset, write what you believe, and keep the decision auditable.</span></div>
-                ) : (
-                  <div className="workspace-list">
-                    {thesisWorkspace.map((item) => {
-                      const outcome = thesisOutcome(item);
-                      return <article key={item.id} className="workspace-item">
-                        <div className="workspace-item-top"><b>{item.symbol}</b><span className={`workspace-status ${item.status.toLowerCase()}`}>{item.status}</span><time>{new Date(item.createdAt).toLocaleDateString([], { day: "2-digit", month: "short" })}</time></div>
-                        <h3>{item.title}</h3>
-                        <p>{item.note}</p>
-                        <div className="workspace-outcome"><span>OUTCOME SINCE ENTRY</span><strong className={outcome.change === null ? "" : outcome.change >= 0 ? "up" : "down"}>{outcome.change === null ? "NAV PENDING" : `${outcome.change >= 0 ? "+" : ""}${outcome.change.toFixed(2)}%`}</strong><small>{outcome.current === null ? "Awaiting current NAV" : `Entry ${outcome.entry.toFixed(2)} → Now ${outcome.current.toFixed(2)}`}</small></div>
-                        <div className="workspace-metrics"><span>RECORDED SCORE <b>{item.score}/100</b></span><span>CONVICTION <b>{item.conviction}/5</b></span><span>TARGET <b>{item.target === null ? "—" : `${item.target}%`}</b></span><span>REVIEWS <b>{item.reviewCount || 0}</b></span></div>
-                        <div className="workspace-followup"><div><span>AGENT FOLLOW-UP</span><b>{followUpLoading[item.id] ? "CHECKING MARKET CONTEXT…" : followUps[item.id]?.nextAction || "Waiting for market context"}</b></div>{followUps[item.id] && <><small>{followUps[item.id].reviewWindow} · Confidence {followUps[item.id].confidence}/100</small><div className="followup-triggers">{followUps[item.id].triggers.map((trigger) => <em key={trigger}>{trigger}</em>)}</div></>}<button type="button" onClick={() => runFollowUp(item)}>{followUpLoading[item.id] ? "RUNNING…" : "RUN FOLLOW-UP ↗"}</button></div>
-                        <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); document.getElementById("watchlist")?.scrollIntoView({ behavior: "smooth" }); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button>{item.id?.startsWith("th_") && !editTokenFor(item.id) ? <button type="button" onClick={() => duplicateThesis(item)}>DUPLICATE AS NEW ↗</button> : null}<select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
-                        {shareLink?.id === item.id && <p role="status">Share link ready: <a href={shareLink.url} target="_blank" rel="noreferrer">Open shared thesis ↗</a> <input aria-label="Shareable thesis link" value={shareLink.url} readOnly onFocus={(event) => event.target.select()} /></p>}
-                      </article>;
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </section>
-          <section id="thesis-activity" className="thesis-activity-section">
-            <div className="history-heading">
-              <div>
-                <div className="kicker"><span>06</span> DECISION CONTROL</div>
-                <h2>Thesis <em>activity.</em></h2>
-                <p>See what changed, what needs attention, and why the agent is asking for a review.</p>
-              </div>
-              <span className="workspace-count">{thesisAlerts.length} ACTIVE ALERTS</span>
-            </div>
-            <div className="thesis-activity-grid">
-              <div className="alert-center panel">
-                <div className="workspace-panel-head"><span>Alert center</span><b>{thesisAlerts.length ? "ACTION REQUIRED" : "ALL CLEAR"}</b></div>
-                {thesisAlerts.length === 0 ? <div className="workspace-empty"><strong>NO ACTIVE ALERTS</strong><span>Follow-ups and outcome reviews will appear here when a thesis needs attention.</span></div> : <div className="alert-list">{thesisAlerts.map((alert) => <div key={alert.id} className={`alert-row ${alert.severity.toLowerCase()}`}><div><span>{alert.severity} / {alert.symbol}</span><b>{alert.title}</b><small>{alert.detail}</small></div><button type="button" onClick={() => dismissAlert(alert.id)}>ACKNOWLEDGE</button></div>)}</div>}
-              </div>
-              <div className="timeline-panel panel">
-                <div className="workspace-panel-head"><span>Thesis timeline</span><b>{timelineItems.length} EVENTS</b></div>
-                {timelineItems.length === 0 ? <div className="workspace-empty"><strong>NO EVENTS YET</strong><span>Save a thesis to start an auditable decision timeline.</span></div> : <div className="timeline-list">{timelineItems.map((event) => <div key={event.id} className="timeline-row"><i /><div><span>{event.symbol} · {event.type}</span><b>{event.detail}</b><small>{new Date(event.createdAt).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</small></div></div>)}</div>}
-              </div>
-            </div>
-          </section>
-          <section id="history" className="history-section">
-            <div className="history-heading">
-              <div>
-                <div className="kicker">
-                  <span>07</span> ONCHAIN RECORD
-                </div>
-                <h2>
-                  Thesis <em>history.</em>
-                </h2>
-                <p>
-                  Research proofs read through the StockLens history proxy on
-                  Base Sepolia (84532). Recorded contract scores use a legacy heuristic and are not validated asset-risk ratings. B20 NAV remains on Base mainnet (8453).
-                </p>
-              </div>
-              <a
-                className="explorer-link"
-                href={`https://sepolia.basescan.org/address/${REGISTRY_ADDRESS}#readContract`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                OPEN CONTRACT ↗
-              </a>
-            </div>
-            <div className="history-panel panel">
-              {historyLoading ? (
-                <p className="history-empty">READING BASE SEPOLIA…</p>
-              ) : historyError ? (
-                <p className="history-empty">{historyError}</p>
-              ) : thesisHistory.length === 0 ? (
-                <p className="history-empty">No thesis recorded yet.</p>
-              ) : (
-                <div className="history-list">
-                  {thesisHistory.map((item) => (
-                    <a
-                      key={item.id}
-                      className="history-row"
-                      href={`https://sepolia.basescan.org/address/${REGISTRY_ADDRESS}#events`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      <span className="history-id">#{item.id}</span>
-                      <span className="history-symbol">
-                        <b>{item.symbol}</b>
-                        <small>
-                          {new Date(item.timestamp).toLocaleString("en-US", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
-                          })}
-                        </small>
-                      </span>
-                      <span>
-                        <small>PRICE</small>
-                        <b>${item.price.toFixed(2)}</b>
-                      </span>
-                      <span>
-                        <small>CHANGE</small>
-                        <b className={item.change === null || item.change === 0 ? "neutral-change" : item.change > 0 ? "up" : "down"}>
-                          {displayProofChange(item.change)}
-                        </b>
-                      </span>
-                      <span>
-                        <small>RECORDED SCORE</small>
-                        <b>{item.score}/100</b>
-                      </span>
-                      <span className="history-wallet">
-                        <small>RESEARCHER</small>
-                        <b>
-                          {item.researcher.slice(0, 6)}…
-                          {item.researcher.slice(-4)}
-                        </b>
-                      </span>
-                      <span className="verified-badge">✓ VERIFIED ONCHAIN</span>
-                    </a>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
-        </main>
-        <nav className="mobile-nav" aria-label="Mobile sections">
-          <a href="#watchlist"><b>Markets</b><small>Watchlist</small></a>
-          <a href="#lens"><b>AI</b><small>Research brief</small></a>
-          <a href="#simulate"><b>Portfolio</b><small>Paper lab</small></a>
-        </nav>
-        <footer>
-          <span>STOCKLENS / ONCHAIN RESEARCH TERMINAL</span>
-          <span>BASE BUILD SPRINT / V0.2</span>
-        </footer>
-      </div>
-    </div>
+    <TerminalShell ui={{
+      theme, setTheme, screen, setScreen,
+      complianceAccepted, acceptCompliance, complianceCountry, setComplianceCountry,
+      complianceConfirmed, setComplianceConfirmed, complianceError, setComplianceError,
+      selected, pick, asset, marketAssets, filteredMarketAssets,
+      marketSearch, setMarketSearch, marketFilter, setMarketFilter, marketSort, setMarketSort,
+      dataMode, marketClock, navFreshness, hasNav, hasHistory, changeTone, formatUSD, formatUnits, numericPrice,
+      chartType, setChartType, range, setRange, chartPoints, chartCandles, chartYLabels, chartHistoryMeta,
+      displayedScore, riskBriefs, riskLoading, matchingInsight, insight, modelLabel, scoreBasis,
+      aiDetailsOpen, setAiDetailsOpen,
+      portfolioMetrics, portfolio, removePosition, portfolioPlan, largestMove, rebalanceRows,
+      portfolioAgentLoading, portfolioAgentError, runPortfolioAgent,
+      applyPortfolioPlan, undoPortfolioApply, applyingPlan, agentApplied, agentMorphing, bookFlash, portfolioUndo,
+      budget, setBudget, budgetMode, setBudgetMode, usdcBalance, chooseBudget, allocation,
+      isSimulating, runSimulation, proveOnchain, isSending, txHash, notice, wallet,
+      thesisTitle, setThesisTitle, thesisNote, setThesisNote, thesisConviction, setThesisConviction, saveThesis,
+      thesisWorkspace, thesisOutcome, followUps, followUpLoading, runFollowUp, reviewThesis, shareThesis,
+      duplicateThesis, updateThesisStatus, editTokenFor, shareLink,
+      thesisAlerts, dismissAlert, timelineItems, thesisHistory, historyLoading, historyError,
+      registry: REGISTRY_ADDRESS, displayProofChange,
+      judgeStep, judgeRunning, startJudgeDemo, AssetIcon, WalletButton: WalletConnectButton,
+    }} />
   );
 }
 
