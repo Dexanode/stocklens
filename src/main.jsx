@@ -17,6 +17,7 @@ import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
 import { proofChangeBps, displayProofChange } from "./proof-change.js";
+import { paperPosition, paperPlanIsValid } from "./paper-validation.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -573,7 +574,8 @@ function App() {
       const market = marketAssets[item.symbol];
       const price = Number(String(market?.price || "").replace(/[$,]/g, ""));
       const notional = Math.round(Number(budget) * Number(item.targetPercent) / 100 * 100) / 100;
-      return { symbol: item.symbol, units: Number.isFinite(price) && price > 0 ? Number((notional / price).toFixed(8)) : 0, notional, entryPrice: price };
+      const validPrice = market?.dataQuality?.nav !== false && Number.isFinite(price) && price > 0;
+      return { symbol: item.symbol, units: validPrice ? Number((notional / price).toFixed(8)) : 0, notional, entryPrice: validPrice ? price : null };
     });
   }, [portfolioPlan, marketAssets, budget]);
   const previewRows = useMemo(() => {
@@ -892,9 +894,14 @@ function App() {
   }
 
   function runSimulation() {
+    const position = paperPosition(selected, asset, budget);
+    if (!position) {
+      setNotice("Enter a positive paper budget and wait for an available NAV before simulating.");
+      return;
+    }
     setIsSimulating(true);
     setPortfolio((items) => [
-      { symbol: selected, units: allocation, notional: Number(budget), entryPrice: Number(String(asset.price).replace(/[$,]/g, "")) },
+      position,
       ...items.filter((item) => item.symbol !== selected),
     ]);
     setNotice(
@@ -904,7 +911,10 @@ function App() {
   }
 
   function applyPortfolioPlan() {
-    if (!targetPortfolio.length) return;
+    if (!paperPlanIsValid(targetPortfolio, budget)) {
+      setNotice("A positive budget and available NAV for every target are required before applying the plan.");
+      return;
+    }
     setPortfolio(targetPortfolio);
     setPortfolioPreview(false);
     setNotice(`Portfolio target applied to the local paper book: ${targetPortfolio.length} positions. No order was sent.`);
