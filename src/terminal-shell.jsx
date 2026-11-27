@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import NumberFlow from "@number-flow/react";
-import { LensMark, NavChart, PaperGrain, Ridgeline, Spark } from "./visual.jsx";
+import { NavChart, PaperGrain, Ridgeline, Spark } from "./visual.jsx";
 
 const easeOut = [0.22, 1, 0.36, 1];
 const list = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
@@ -65,6 +65,13 @@ export function TerminalShell({ ui }) {
   );
 }
 
+function BrandMark({ size }) {
+  return <span className="sl-brand-icon" style={{ width: size, height: size }} aria-hidden="true">
+    <img className="brand-logo brand-logo-light" src="/brand-icon-light.svg?v=animated1" alt="" />
+    <img className="brand-logo brand-logo-dark" src="/brand-icon-dark.svg?v=animated1" alt="" />
+  </span>;
+}
+
 function ShellInner({ ui }) {
   const reduce = useReducedMotion();
   const [distance, setDistance] = useState(10);
@@ -112,7 +119,7 @@ function ShellInner({ ui }) {
         <div className="main-column" id="top">
           <header className="topbar">
             <a className="sl-brand" href="#top" onClick={(event) => { event.preventDefault(); go("markets"); }}>
-              <LensMark size={30} />
+              <BrandMark size={30} />
               StockLens
             </a>
             <nav className="sl-nav d-only" aria-label="Sections">
@@ -152,7 +159,7 @@ function Gate({ ui, item }) {
       <div className="welcome-layout gate">
         <section className="gate-l">
           <div>
-            <motion.div className="sl-brand" initial="hidden" animate="show" variants={item}><LensMark size={32} /> StockLens <small>/ research terminal</small></motion.div>
+            <motion.div className="sl-brand" initial="hidden" animate="show" variants={item}><BrandMark size={32} /> StockLens <small>/ research terminal</small></motion.div>
             <motion.h1 initial="hidden" animate="show" variants={item} id="welcome-title">From market data<br /><span>to a testable thesis.</span></motion.h1>
             <motion.p className="promise" initial="hidden" animate="show" variants={item}>Explore B20 reference NAVs, challenge an AI research brief, and build a paper portfolio. Record a thesis on Base Sepolia if you choose.</motion.p>
             <motion.div className="steps" initial="hidden" animate="show" variants={item} aria-label="How StockLens works">
@@ -463,7 +470,7 @@ function AgentEntry({ ui, go }) {
   return (
     <>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <LensMark size={40} thinking={ui.portfolioAgentLoading} />
+        <BrandMark size={40} />
         <span className="tag">{ui.portfolioPlan ? `${ui.portfolioPlan.regime || "Plan"} · confidence ${ui.portfolioPlan.confidence ?? "—"}` : "Not run yet"}</span>
       </div>
       <h3>Portfolio Agent</h3>
@@ -775,7 +782,7 @@ function BottomNav({ active, go }) {
     <nav className="mobile-nav sl-bnav" aria-label="Sections">
       <button type="button" className={active === "markets" ? "on" : ""} onClick={() => go("markets")}>Markets</button>
       <button type="button" className={active === "brief" ? "on" : ""} onClick={() => go("brief", "lens")}>Brief</button>
-      <button type="button" className={active === "agent" ? "on" : ""} onClick={() => go("agent")} aria-label="Portfolio Agent"><span className="fab"><LensMark size={26} /></span>Agent</button>
+      <button type="button" className={active === "agent" ? "on" : ""} onClick={() => go("agent")} aria-label="Portfolio Agent"><span className="fab"><BrandMark size={26} /></span>Agent</button>
       <button type="button" className={active === "paper" ? "on" : ""} onClick={() => go("paper")}>Paper</button>
       <button type="button" className={active === "theses" ? "on" : ""} onClick={() => go("theses")}>Theses</button>
     </nav>
