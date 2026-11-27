@@ -967,6 +967,7 @@ html[data-theme="dark"] .book-table tr.flash td { animation-name: book-flash-dar
   font-family: var(--f-ui) !important;
   font-size: 14px !important;
 }
+.sl-app .trade-notice { margin: 15px 0 16px; }
 .sl-app .simulator,
 .sl-app .thesis-composer,
 .sl-app .thesis-list-panel,
