@@ -267,6 +267,8 @@ html[data-theme="dark"] .mark path { stroke: #171717; }
 
 .sl-nav { display: flex; gap: 4px; margin-left: 8px; }
 .sl-nav button {
+  white-space: nowrap;
+  flex: 0 0 auto;
   min-height: 36px;
   padding: 8px 14px;
   border-radius: 999px;
@@ -558,7 +560,8 @@ html[data-theme="dark"] .wl-active { box-shadow: inset 0 0 0 1px #5c4d86; }
   box-shadow: 0 0 0 1px rgba(23, 23, 23, 0.22);
 }
 .sl-app .asset-icon[data-symbol="AAPLc"] img,
-.sl-app .asset-icon[data-symbol="INTCc"] img { background: #171717; }
+.sl-app .asset-icon[data-symbol="INTCc"] img,
+.sl-app .asset-icon[data-symbol="AMZNc"] img { background: #171717; }
 .sl-app .asset-name b,
 .sl-app .asset-price b {
   color: var(--ink) !important;
@@ -644,10 +647,10 @@ html[data-theme="dark"] .wl-active { box-shadow: inset 0 0 0 1px #5c4d86; }
 .navtick { margin: 0 -3px; padding: 0 3px; border-radius: 6px; transition: background 1.2s ease; }
 .navtick.flash { background: var(--yellow-wash); transition: none; }
 html[data-theme="dark"] .navtick.flash { color: #171717; }
-.chartbar { justify-content: space-between; gap: 12px; margin-top: 20px; }
+.chartbar { justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-top: 20px; min-width: 0; }
 .legendline { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
 .legendline i { width: 16px; height: 3px; border-radius: 3px; background: var(--stroke, var(--up)); }
-.ctrls { display: flex; gap: 10px; align-items: center; }
+.ctrls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; min-width: 0; max-width: 100%; }
 
 .chart-slot { position: relative; min-height: 340px; }
 .chart-slot .chart-layer { position: absolute; inset: 0; }
@@ -879,6 +882,8 @@ html[data-theme="dark"] .track .cur { background: #5c5c56; }
   color: #fff;
   box-shadow: var(--sh-3);
 }
+html[data-theme="dark"] .sl-app .toast { background: #27372f; color: #fff; }
+html[data-theme="dark"] .sl-app .toast small { color: #d3ded6 !important; }
 .toast small { display: block; color: #c9c9c1 !important; font-size: 14px !important; }
 .book-scroll { max-width: 100%; overflow-x: auto; }
 .book-table { width: 100%; border-collapse: collapse; }
@@ -1242,4 +1247,9 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   .sl-app .top-actions { flex: 1 1 auto; }
   .sl-app .wallet-button { min-width: 0; flex: 0 1 auto; }
   .sl-app .chart-slot { margin-top: 16px; }
+}
+
+@media (min-width: 761px) and (max-width: 1350px) {
+  .sl-app .topbar { flex-wrap: wrap; }
+  .sl-app .sl-nav { order: 3; flex: 1 0 100%; margin-left: 0; }
 }
