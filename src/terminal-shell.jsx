@@ -72,6 +72,31 @@ function BrandMark({ size }) {
   </span>;
 }
 
+function SidebarIcon({ name }) {
+  const paths = {
+    markets: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
+    brief: <><circle cx="10" cy="10" r="6" /><path d="m15 15 5 5M7 10h6M10 7v6" /></>,
+    agent: <><rect x="4" y="7" width="16" height="13" rx="3" /><path d="M12 3v4M8 12h.01M16 12h.01M8 16h8" /></>,
+    paper: <><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" /></>,
+    theses: <><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h4" /></>,
+  };
+  return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
+}
+
+function Sidebar({ active, go }) {
+  const links = [["markets", "Markets"], ["brief", "Research"], ["agent", "Portfolio Agent"], ["paper", "Paper lab"], ["theses", "Theses"]];
+  return <aside className="sl-sidebar" aria-label="StockLens navigation">
+    <button className="sl-sidebar-brand" type="button" onClick={() => go("markets")} aria-label="StockLens home">
+      <img src="/brand-icon-dark.svg?v=animated1" alt="" /><span>StockLens</span>
+    </button>
+    <div className="sl-sidebar-caption">RESEARCH WORKSPACE</div>
+    <nav className="sl-sidebar-nav" aria-label="Sections">
+      {links.map(([key, label]) => <button key={key} type="button" className={active === key ? "on" : ""} aria-label={label} aria-current={active === key ? "page" : undefined} title={label} onClick={() => go(key, key === "brief" ? "lens" : undefined)}><SidebarIcon name={key} /><span>{label}</span></button>)}
+    </nav>
+    <div className="sl-sidebar-footer"><span>BASE MAINNET · NAV</span><span>BASE SEPOLIA · PROOFS</span><small>Paper research only</small></div>
+  </aside>;
+}
+
 function ShellInner({ ui }) {
   const reduce = useReducedMotion();
   const [distance, setDistance] = useState(10);
@@ -115,20 +140,14 @@ function ShellInner({ ui }) {
       <Ridgeline />
       <PaperGrain />
       {!ui.complianceAccepted && <Gate ui={ui} item={item} />}
-      {ui.complianceAccepted && (
+      {ui.complianceAccepted && <>
+        <Sidebar active={active} go={go} />
         <div className="main-column" id="top">
           <header className="topbar">
             <a className="sl-brand" href="#top" onClick={(event) => { event.preventDefault(); go("markets"); }}>
               <BrandMark size={30} />
               StockLens
             </a>
-            <nav className="sl-nav d-only" aria-label="Sections">
-              <button type="button" className={active === "markets" ? "on" : ""} onClick={() => go("markets")}>Markets</button>
-              <button type="button" className={active === "brief" ? "on" : ""} onClick={() => go("brief", "lens")}>Research</button>
-              <button type="button" className={active === "agent" ? "on" : ""} onClick={() => go("agent")}>Portfolio Agent</button>
-              <button type="button" className={active === "paper" ? "on" : ""} onClick={() => go("paper")}>Paper lab</button>
-              <button type="button" className={active === "theses" ? "on" : ""} onClick={() => go("theses")}>Theses</button>
-            </nav>
             <div className="top-actions">
               <span className="paper-badge">Paper only</span>
               <span className="base-chip d-only"><i /> Base Sepolia · 84532</span>
@@ -148,7 +167,7 @@ function ShellInner({ ui }) {
           </main>
           <BottomNav active={active} go={go} />
         </div>
-      )}
+      </>}
     </div>
   );
 }
