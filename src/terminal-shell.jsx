@@ -677,7 +677,7 @@ function PaperScreen({ ui, item, Icon, Wallet }) {
 function ThesisScreen({ ui, item }) {
   const asset = ui.asset || {};
   return (
-    <div className="screen-block">
+    <div className="screen-block theses-screen">
       <motion.div className="phead" initial="hidden" animate="show" variants={item}>
         <div>
           <h1 className="page-title">Theses</h1>

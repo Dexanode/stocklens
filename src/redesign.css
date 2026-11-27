@@ -1264,3 +1264,48 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   .sl-app .topbar { flex-wrap: wrap; }
   .sl-app .sl-nav { order: 3; flex: 1 0 100%; margin-left: 0; }
 }
+
+/* Theses, activity and onchain history use the same theme as the terminal. */
+.sl-app .theses-screen .workspace-item,
+.sl-app .theses-screen .timeline-row,
+.sl-app .theses-screen .alert-row,
+.sl-app .theses-screen .history-row { border-color: var(--line) !important; }
+.sl-app .theses-screen .workspace-item { padding: 18px 16px; }
+.sl-app .theses-screen .workspace-item-top > b,
+.sl-app .theses-screen .history-row b,
+.sl-app .theses-screen .timeline-row b,
+.sl-app .theses-screen .alert-row b,
+.sl-app .theses-screen .workspace-followup b { color: var(--ink) !important; font-family: var(--f-ui); font-size: 14px; }
+.sl-app .theses-screen .workspace-item p,
+.sl-app .theses-screen .workspace-outcome small,
+.sl-app .theses-screen .workspace-followup > small,
+.sl-app .theses-screen .timeline-row small,
+.sl-app .theses-screen .alert-row small,
+.sl-app .theses-screen .history-row small,
+.sl-app .theses-screen .workspace-item-top time { color: var(--muted) !important; }
+.sl-app .theses-screen .workspace-outcome { border-color: var(--line) !important; }
+.sl-app .theses-screen .workspace-outcome span { color: var(--muted); font: 13px var(--f-ui); }
+.sl-app .theses-screen .workspace-status { border: 1px solid var(--line) !important; border-radius: 999px !important; background: var(--sunk); color: var(--ink-2) !important; padding: 5px 9px; }
+.sl-app .theses-screen .workspace-followup { padding: 14px; }
+.sl-app .theses-screen .workspace-followup span,
+.sl-app .theses-screen .timeline-row span,
+.sl-app .theses-screen .alert-row span,
+.sl-app .theses-screen .history-id { color: var(--lav-ink) !important; font: 13px var(--f-ui) !important; }
+.sl-app .theses-screen .timeline-row i { background: var(--lav); border-radius: 50%; }
+.sl-app .theses-screen .workspace-followup > button,
+.sl-app .theses-screen .alert-row button,
+.sl-app .theses-screen .workspace-actions select { position: static; width: auto; min-height: 40px; padding: 8px 14px !important; margin-top: 10px; border: 1px solid var(--line) !important; border-radius: 999px !important; background: var(--surface) !important; color: var(--ink) !important; font: 14px var(--f-ui) !important; }
+.sl-app .theses-screen .workspace-actions { flex-wrap: wrap; justify-content: flex-start; }
+.sl-app .theses-screen .workspace-actions select { margin-top: 0; appearance: auto; }
+.sl-app .theses-screen .timeline-row, .sl-app .theses-screen .alert-row { padding: 16px; }
+.sl-app .theses-screen .history-row { grid-template-columns: 42px 1.2fr .75fr .85fr .85fr 1.1fr; color: var(--ink); }
+.sl-app .theses-screen .history-row:hover { background: var(--sunk) !important; }
+.sl-app .theses-screen .history-row .up { color: var(--up) !important; }
+.sl-app .theses-screen .history-row .down { color: var(--down) !important; }
+.sl-app .theses-screen .history-row .neutral-change { color: var(--muted) !important; }
+@media (max-width: 760px) {
+  .sl-app .theses-screen .workspace-actions { flex-direction: row; }
+  .sl-app .theses-screen .workspace-actions button, .sl-app .theses-screen .workspace-actions select { width: auto; flex: 1 1 auto; }
+  .sl-app .theses-screen .history-row { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .sl-app .theses-screen .history-row > span:nth-child(n) { display: flex !important; min-width: 0; overflow-wrap: anywhere; }
+}
