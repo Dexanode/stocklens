@@ -10,6 +10,8 @@ StockLens is a paper-only research terminal for Coinbase B20 tokenized-stock ref
 
 The NAV is a reference value, not a quote, bid, ask, or guaranteed fill price. StockLens does not execute trades or custody assets. Access is blocked for US users/persons and the app is educational, not financial advice.
 
+Market data refreshes every minute while the page is visible. NAV timestamps are supplied by Coinbase; values older than one hour are marked delayed. When no comparison price is supplied, change is unavailable. New onchain proofs encode unavailable change as -2147483648 basis points, a reserved sentinel, and the history API decodes it as null. Older zero values are ambiguous because earlier versions also used zero for missing data.
+
 On Vercel, the US block is enforced server-side from the request IP (`x-vercel-ip-country`) on `/api/market`, `/api/risk`, and `/api/portfolio` (US → 451). In local development there is no IP header, so the self-declared country from the access modal applies instead — that is an attestation, not an enforcement.
 
 ## Product flow

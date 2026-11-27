@@ -1,4 +1,5 @@
 import { Contract, JsonRpcProvider } from 'ethers'
+import { MISSING_CHANGE_BPS } from '../src/proof-change.js'
 
 const REGISTRY_ADDRESS = '0xA54A6c46Fc5c5D0f0Fca952f3445c35ad8e6dD1C'
 const ABI = [
@@ -20,7 +21,7 @@ export default async function handler(_request, response) {
     const rows = await Promise.all(Array.from({ length: count - start }, (_, index) => registry.getThesis(start + index)))
     const data = rows.map((row, index) => ({
       id: start + index, researcher: row.researcher, symbol: normalizeSymbol(row.symbol),
-      price: Number(row.priceCents) / 100, change: Number(row.changeBps) / 100,
+      price: Number(row.priceCents) / 100, change: Number(row.changeBps) === MISSING_CHANGE_BPS ? null : Number(row.changeBps) / 100,
       score: Number(row.riskScore), timestamp: Number(row.timestamp) * 1000,
     })).reverse()
     response.setHeader('Cache-Control', 's-maxage=30, stale-while-revalidate=120')

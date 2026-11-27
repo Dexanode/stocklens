@@ -16,6 +16,7 @@ import "./market-layout.css";
 import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
+import { proofChangeBps, displayProofChange } from "./proof-change.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -857,8 +858,7 @@ function App() {
         return;
       }
       const priceCents = Math.round(priceValue * 100);
-      const changeValue = Number.parseFloat(asset.change.replace("%", ""));
-      const changeBps = Number.isFinite(changeValue) ? Math.round(changeValue * 100) : 0;
+      const changeBps = proofChangeBps(asset.change);
       const transaction = await registry.recordThesis(
         selected,
         priceCents,
@@ -1924,9 +1924,8 @@ function App() {
                       </span>
                       <span>
                         <small>CHANGE</small>
-                        <b className={item.change >= 0 ? "up" : "down"}>
-                          {item.change >= 0 ? "+" : ""}
-                          {item.change.toFixed(2)}%
+                        <b className={item.change === null || item.change === 0 ? "neutral-change" : item.change > 0 ? "up" : "down"}>
+                          {displayProofChange(item.change)}
                         </b>
                       </span>
                       <span>
