@@ -8,6 +8,6 @@ export function proofChangeBps(change) {
 }
 export function displayProofChange(change) {
   if (change === null || !Number.isFinite(change)) return 'Unavailable'
-  if (change === 0) return '0% or unavailable (legacy)'
+  if (change === 0) return '0% or unavailable'
   return `${change > 0 ? '+' : ''}${change.toFixed(2)}%`
 }
