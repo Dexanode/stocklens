@@ -580,7 +580,7 @@ function AgentScreen({ ui, item, go, Icon }) {
           </motion.section>
         </div>
         <div className="col">
-          <motion.section className="card" initial="hidden" animate="show" variants={item}>
+          <motion.section className="card rebalance-card" initial="hidden" animate="show" variants={item}>
             <div className="card-h"><div><h2>Rebalance preview</h2><div className="sub">{ui.portfolioPlan ? `${adds} adds · ${reduces} reduces · ${ui.formatUSD(moved)} moved` : "No plan yet"}</div></div></div>
             <p className="lede" style={{ padding: "0 20px" }}>{ui.portfolioPlan?.summary || "The agent proposes weights from the assets that have a usable NAV. It does not place orders."}</p>
             {ui.portfolioPlan?.source && <p className="model-line" style={{ padding: "0 20px" }}>Source {ui.portfolioPlan.source}{ui.portfolioPlan.fallback ? ` · fallback ${ui.portfolioPlan.fallbackReason || "unavailable"}` : ""}</p>}

@@ -870,6 +870,8 @@ html[data-theme="dark"] .track .cur { background: #5c5c56; }
 .act { border-radius: 8px; font-weight: 600; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 14px; }
 .legend i { display: inline-block; width: 18px; height: 8px; margin-right: 6px; border-radius: 9px; vertical-align: middle; }
+.rebalance-card { overflow: hidden; }
+.rebalance-card .lede, .rebalance-card .model-line { margin-bottom: 16px; }
 .apply-box { padding: 16px 20px 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface-2); }
 .apply-box p { margin: 10px 0 0; color: var(--muted); font-size: 14px; }
 .trade { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 20px; border-top: 1px solid var(--line-2); }
