@@ -1242,8 +1242,21 @@ function App() {
     <div className="terminal-app">
       {!complianceAccepted && (
         <div className="compliance-backdrop" role="dialog" aria-modal="true" aria-labelledby="compliance-title">
+          <div className="welcome-layout">
+            <section className="welcome-intro" aria-labelledby="welcome-title">
+              <div className="welcome-brand">STOCK<span>LENS</span> <small> / RESEARCH TERMINAL</small></div>
+              <div className="welcome-eyebrow">TOKENIZED STOCK RESEARCH / BASE</div>
+              <h1 id="welcome-title">From market data<br />to a testable thesis.</h1>
+              <p>Explore B20 reference NAVs, challenge an AI research brief, and build a paper portfolio. Record a thesis on Base Sepolia if you choose.</p>
+              <div className="welcome-steps" aria-label="How StockLens works">
+                <div><b>01</b><span><strong>RESEARCH</strong><small>Explore NAV &amp; AI context</small></span></div>
+                <div><b>02</b><span><strong>SIMULATE</strong><small>Test a paper allocation</small></span></div>
+                <div><b>03</b><span><strong>VERIFY</strong><small>Optionally record a thesis</small></span></div>
+              </div>
+              <div className="welcome-context"><span>BASE MAINNET / NAV DATA</span><span>BASE SEPOLIA / OPTIONAL PROOF</span></div>
+            </section>
           <form className="compliance-card" onSubmit={acceptCompliance}>
-            <div className="compliance-kicker">StockLens / Access check</div>
+            <div className="compliance-kicker">01 / BEFORE YOU ENTER</div>
             <h2 id="compliance-title">Research mode only.</h2>
             <p>
               StockLens adalah terminal riset untuk tokenized-stock reference data di Base.
@@ -1282,6 +1295,7 @@ function App() {
             <button className="compliance-submit" type="submit">Enter research terminal <b>↗</b></button>
             <small className="compliance-note">Access is blocked for US users/persons. Do not connect funds or place live trades.</small>
           </form>
+          </div>
         </div>
       )}
       <aside className="sidebar">
