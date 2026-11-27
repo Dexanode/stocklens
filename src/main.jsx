@@ -35,13 +35,17 @@ const queryClient = new QueryClient();
 
 // Explicit mapping avoids presenting an unrelated company's logo for new B20 symbols.
 const logoTickers = new Set(["AAPL", "AMZN", "GOOGL", "INTC", "META", "MSFT", "MSTR", "NVDA", "TSLA", "COIN", "HOOD"]);
+const companyDomains = { ANTc: "anthropic.com", CRCLc: "circle.com", SNDKc: "sandisk.com", SPCXc: "spacex.com" };
 function AssetIcon({ symbol }) {
   const [failed, setFailed] = useState(false);
   const ticker = symbol.endsWith("c") ? symbol.slice(0, -1) : "";
   useEffect(() => setFailed(false), [symbol]);
-  const showLogo = logoTickers.has(ticker) && !failed;
+  const logoUrl = companyDomains[symbol]
+    ? `https://www.google.com/s2/favicons?domain=${companyDomains[symbol]}&sz=128`
+    : logoTickers.has(ticker) ? `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${ticker}.png` : null;
+  const showLogo = logoUrl && !failed;
   return <span className="asset-icon" aria-hidden="true">
-    {showLogo ? <img src={`https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${ticker}.png`} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : symbol.slice(0, 1)}
+    {showLogo ? <img src={logoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : symbol.slice(0, 1)}
   </span>;
 }
 
@@ -1385,6 +1389,13 @@ function App() {
             </section>
           )}
           <div id="overview" />
+          <nav className="research-journey" aria-label="Research steps">
+            <span>RESEARCH FLOW</span>
+            <a href="#watchlist">01 Select an asset</a>
+            <a href="#lens">02 Review the brief</a>
+            <a href="#thesis-workspace">03 Write a thesis</a>
+            <a href="#simulate">04 Simulate a portfolio</a>
+          </nav>
           <section id="watchlist" className="research-grid">
             <div className="watchlist-panel panel">
               <div className="panel-head">
@@ -1613,6 +1624,7 @@ function App() {
                 <span>{aiDetailsOpen ? "HIDE RESEARCH DETAILS" : "VIEW RESEARCH DETAILS"}</span>
                 <b>{aiDetailsOpen ? "−" : "+"}</b>
               </button>
+              <div className="research-next"><span>Next for {selected}</span><a href="#thesis-workspace">Write a thesis ↗</a><a href="#simulate">Simulate a position ↗</a></div>
               {aiDetailsOpen && (
                 <div className="ai-details">
                   <div className="ai-signals">
