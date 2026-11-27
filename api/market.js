@@ -41,7 +41,8 @@ function normalize(token, index) {
   const [tone, color] = toneFor(symbol)
   const score = scoreFor(token, price)
   const rawChange = token.change_24h ?? token.nav_change_24h ?? token.price_change_24h
-  const change = Number.isFinite(Number(rawChange)) ? `${Number(rawChange).toFixed(2)}%` : 'N/A'
+  const hasChange = rawChange !== null && rawChange !== undefined && String(rawChange).trim() !== '' && Number.isFinite(Number(rawChange))
+  const change = hasChange ? `${Number(rawChange).toFixed(2)}%` : 'N/A'
   const updatedAt = token.nav_price_updated_at || null
   return [symbol, {
     name: token.name || symbol, ticker: symbol, sector: 'Tokenized equity / B20',
@@ -54,7 +55,7 @@ function normalize(token, index) {
     contractAddress: token.contract_address, chainId: 8453, dataSource: 'Coinbase Tokenized Stocks API',
     navUpdatedAt: updatedAt, totalSupply: token.total_supply ?? null, multiplier: token.multiplier ?? null,
     pausedFeatures: token.paused_features || [],
-    dataQuality: { nav: true, history: Array.isArray(token.nav_history) && token.nav_history.length > 1, change: Number.isFinite(Number(rawChange)) }, index,
+    dataQuality: { nav: true, history: Array.isArray(token.nav_history) && token.nav_history.length > 1, change: hasChange }, index,
   }]
 }
 
