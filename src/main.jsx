@@ -786,7 +786,7 @@ function App() {
         if (active) setThesisHistory(payload.data || []);
       } catch {
         if (active)
-          setHistoryError("History belum bisa dimuat dari Base Sepolia.");
+          setHistoryError("Unable to load history from Base Sepolia.");
       } finally {
         if (active) setHistoryLoading(false);
       }
@@ -861,7 +861,7 @@ function App() {
       const registry = new Contract(REGISTRY_ADDRESS, REGISTRY_ABI, signer);
       const priceValue = Number(asset.price.replace(/[$,]/g, ""));
       if (!Number.isFinite(priceValue)) {
-        setNotice("B20 NAV belum tersedia. Tunggu reference price sebelum merekam thesis.");
+        setNotice("B20 NAV is unavailable. Wait for a reference price before recording a thesis.");
         return;
       }
       const priceCents = Math.round(priceValue * 100);
@@ -958,10 +958,10 @@ function App() {
         response.ok ? response.json() : response.json().then((body) => Promise.reject(new Error(body.error || "portfolio_agent_unavailable"))),
       );
       setPortfolioPlan(result);
-      setNotice("Portfolio Agent selesai. Review target allocation sebelum paper trade.");
+      setNotice("Portfolio Agent finished. Review the target allocation before paper trading.");
       return true;
     } catch (error) {
-      setPortfolioAgentError(error?.message || "Portfolio Agent belum tersedia.");
+      setPortfolioAgentError(error?.message || "Portfolio Agent is unavailable.");
       return false;
     } finally {
       setPortfolioAgentLoading(false);
@@ -975,18 +975,18 @@ function App() {
       setJudgeStep(1);
     }
     setJudgeRunning(true);
-    setNotice("Judge Mode dimulai: membaca NAV B20 dan menyiapkan thesis paper-only.");
+    setNotice("Judge Mode started: reading B20 NAV and preparing a paper-only thesis.");
     window.setTimeout(() => setJudgeStep(2), 650);
     window.setTimeout(async () => {
       setJudgeStep(3);
       const ready = await runPortfolioAgent();
       setJudgeRunning(false);
       if (!ready) {
-        setNotice("Portfolio Agent gagal. Jalankan ulang walkthrough.");
+        setNotice("Portfolio Agent failed. Run the walkthrough again.");
         return;
       }
       setJudgeStep(4);
-      setNotice("Judge Mode siap. Review rebalance lalu apply ke paper book atau record thesis secara sukarela.");
+      setNotice("Judge Mode is ready. Review the rebalance, apply it to your paper portfolio, or optionally record a thesis.");
     }, 1350);
   }
 
@@ -1052,8 +1052,8 @@ function App() {
     // `pendingPropagation` means a fresh re-read had not seen it yet
     // (Blob reads lag writes ~10–25 s). Say so instead of implying it
     // is already visible server-side.
-    const savedNote = `${selected} thesis disimpan di workspace ${saved.id?.startsWith("th_") ? "server-side" : "local"}. Paper-only dan bisa direview ulang kapan saja.`;
-    setNotice(savedPayload?.pendingPropagation ? `${savedNote} Server belum menampilkan perubahan ini — akan terkonfirmasi saat refresh.` : savedNote);
+    const savedNote = `${selected} thesis saved ${saved.id?.startsWith("th_") ? "on the server" : "locally"}. It is paper-only and can be reviewed at any time.`;
+    setNotice(savedPayload?.pendingPropagation ? `${savedNote} The server saved this change, but it may take time to appear on refresh.` : savedNote);
   }
 
   function updateThesisStatus(id, status) {
@@ -1062,11 +1062,11 @@ function App() {
     if (!next) return;
     setThesisWorkspace((items) => items.map((item) => item.id === id ? next : item));
     persistThesis(next).then((result) => {
-      if (result?.status === 410) setNotice(`${next.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
-      else if (result?.status === 503) setNotice(`${next.symbol} status gagal disimpan di server (${result?.code || "store_unavailable"}) — perubahan tersimpan lokal, coba lagi sebentar lagi.`);
+      if (result?.status === 410) setNotice(`This ${next.symbol} thesis was created before edit tokens and is read-only on the server. Changes are saved locally. Duplicate it as a new thesis to edit it.`);
+      else if (result?.status === 503) setNotice(`Could not save ${next.symbol} status on the server (${result?.code || "store_unavailable"}). Changes are saved locally; try again shortly.`);
       else if (result?.thesis) {
         setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
-        if (result?.pendingPropagation) setNotice(`${next.symbol} status tersimpan di server, tapi belum terkonfirmasi terlihat — akan terkonfirmasi saat refresh.`);
+        if (result?.pendingPropagation) setNotice(`${next.symbol} status was saved on the server but may take time to appear on refresh.`);
       }
     });
     recordThesisEvent(next.id, next.symbol, `STATUS → ${status}`, `Thesis status changed from the workspace.`);
@@ -1113,16 +1113,16 @@ function App() {
     };
     setThesisWorkspace((items) => items.map((entry) => entry.id === id ? next : entry));
     persistThesis(next).then((result) => {
-      if (result?.status === 410) setNotice(`${item.symbol} thesis ini dibuat sebelum edit-token, jadi server menyimpannya read-only. Perubahan tersimpan lokal — duplikasi sebagai thesis baru untuk mengeditnya.`);
-      else if (result?.status === 503) setNotice(`${item.symbol} review gagal disimpan di server (${result?.code || "store_unavailable"}) — perubahan tersimpan lokal, coba lagi sebentar lagi.`);
+      if (result?.status === 410) setNotice(`This ${item.symbol} thesis was created before edit tokens and is read-only on the server. Changes are saved locally. Duplicate it as a new thesis to edit it.`);
+      else if (result?.status === 503) setNotice(`Could not save the ${item.symbol} review on the server (${result?.code || "store_unavailable"}). Changes are saved locally; try again shortly.`);
       else if (result?.thesis) {
         setThesisWorkspace((items) => items.map((entry) => entry.id === result.thesis.id ? { ...entry, ...result.thesis } : entry));
-        if (result?.pendingPropagation) setNotice(`${item.symbol} review tersimpan di server, tapi belum terkonfirmasi terlihat — akan terkonfirmasi saat refresh.`);
+        if (result?.pendingPropagation) setNotice(`The ${item.symbol} review was saved on the server but may take time to appear on refresh.`);
       }
     });
     runFollowUp(next);
     recordThesisEvent(next.id, next.symbol, "OUTCOME REVIEWED", "NAV snapshot and agent follow-up refreshed.");
-    setNotice(`${item.symbol} outcome di-review dengan data NAV terbaru.`);
+    setNotice(`${item.symbol} outcome reviewed using the latest available NAV.`);
   }
 
   async function duplicateThesis(item) {
@@ -1140,13 +1140,13 @@ function App() {
         if (payload.editToken) storeEditToken(payload.thesis.id, payload.editToken);
         setThesisWorkspace((items) => [payload.thesis, ...items].slice(0, 30));
         recordThesisEvent(payload.thesis.id, payload.thesis.symbol, "THESIS DUPLICATED", `Duplicated from legacy thesis ${item.id}.`);
-        setNotice(`${item.symbol} thesis diduplikasi sebagai thesis baru yang bisa diedit.`);
+        setNotice(`${item.symbol} thesis duplicated as a new editable thesis.`);
         return;
       }
     } catch { /* fall through to a local-only duplicate below */ }
     const local = { ...copy, id: `${item.symbol}-${Date.now()}` };
     setThesisWorkspace((items) => [local, ...items].slice(0, 30));
-    setNotice(`${item.symbol} thesis diduplikasi secara lokal (server tidak terjangkau).`);
+    setNotice(`${item.symbol} thesis duplicated locally (the server is unreachable).`);
   }
 
   function recordThesisEvent(thesisId, symbol, type, detail) {
@@ -1187,8 +1187,8 @@ function App() {
       : `${window.location.origin}${window.location.pathname}?thesis=${encodeURIComponent(JSON.stringify(payload))}`;
     setShareLink({ id: serverId || item.id, url });
     const copied = navigator.clipboard?.writeText(url);
-    if (copied) copied.then(() => setNotice(`${item.symbol} shareable thesis link copied.`)).catch(() => setNotice("Link siap dibuat, tapi browser menolak akses clipboard."));
-    else setNotice("Link siap dibuat, tapi browser tidak menyediakan clipboard.");
+    if (copied) copied.then(() => setNotice(`${item.symbol} shareable thesis link copied.`)).catch(() => setNotice("The link is ready, but the browser denied clipboard access."));
+    else setNotice("The link is ready, but the browser does not provide clipboard access.");
   }
 
   function thesisOutcome(item) {
@@ -1224,15 +1224,15 @@ function App() {
   function acceptCompliance(event) {
     event.preventDefault();
     if (!complianceCountry) {
-      setComplianceError("Pilih negara tempat kamu berada.");
+      setComplianceError("Select the country or region where you are located.");
       return;
     }
     if (complianceCountry === "US") {
-      setComplianceError("StockLens belum tersedia untuk pengguna atau warga Amerika Serikat.");
+      setComplianceError("StockLens is not available to US users or US persons.");
       return;
     }
     if (!complianceConfirmed) {
-      setComplianceError("Centang konfirmasi paper-only untuk masuk.");
+      setComplianceError("Confirm the paper-only statement to enter.");
       return;
     }
     try {
@@ -1264,8 +1264,8 @@ function App() {
             <div className="compliance-kicker">01 / BEFORE YOU ENTER</div>
             <h2 id="compliance-title">Research mode only.</h2>
             <p>
-              StockLens adalah terminal riset untuk tokenized-stock reference data di Base.
-              Semua posisi di sini bersifat simulasi dan tidak mengeksekusi order atau custody aset.
+              StockLens is a research terminal for tokenized stock reference data on Base.
+              All positions are simulated; the app does not execute orders or custody assets.
             </p>
             <label className="compliance-label" htmlFor="compliance-country">Your location</label>
             <select
@@ -1681,7 +1681,7 @@ function App() {
                 {portfolioPlan && <p>Allocation uses available data; data availability is not an assessment of asset risk.</p>}
                 {portfolioPlan && <p role="status">Source: {portfolioPlan.source || "Unknown"}{portfolioPlan.fallback ? ` · Fallback reason: ${portfolioPlan.fallbackReason || "Unavailable"}` : ""}</p>}
                 <p>
-                  Baca seluruh B20 watchlist dan paper holdings untuk menyusun target allocation serta langkah rebalance.
+                  Analyze the full B20 watchlist and paper holdings to propose target allocations and rebalancing steps.
                 </p>
                 <button className="agent-button" onClick={runPortfolioAgent} disabled={portfolioAgentLoading}>
                   {portfolioAgentLoading ? "AGENT THINKING…" : "RUN PORTFOLIO AGENT"} <b>↗</b>
