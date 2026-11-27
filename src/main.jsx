@@ -14,6 +14,7 @@ import "./index.css";
 import "./b20.css";
 import "./market-layout.css";
 import { resolveShareId } from "./thesis-share.js";
+import { walletIsOnBaseSepolia } from "./wallet-network.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -459,7 +460,7 @@ function App() {
   const [dismissedAlerts, setDismissedAlerts] = useState(() => {
     try { return JSON.parse(window.localStorage.getItem("stocklens-thesis-alerts-v1") || "{}"); } catch { return {}; }
   });
-  const { address, connector } = useAccount();
+  const { address, connector, chainId } = useAccount();
   const asset = marketAssets[selected];
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -811,7 +812,7 @@ function App() {
     setNotice("Confirm the Base Sepolia proof transaction in your wallet…");
     try {
       const walletProvider = connector ? await connector.getProvider() : window.ethereum;
-      if (!walletProvider || Number(await walletProvider.request({ method: "eth_chainId" })) !== 84532) {
+      if (!await walletIsOnBaseSepolia(connector, walletProvider, chainId)) {
         setNotice("Switch your connected wallet to Base Sepolia before recording.");
         return;
       }
@@ -825,7 +826,7 @@ function App() {
         setNotice("StockLens registry is unavailable on this network.");
         return;
       }
-      if (Number(await walletProvider.request({ method: "eth_chainId" })) !== 84532) {
+      if (!await walletIsOnBaseSepolia(connector, walletProvider, chainId)) {
         setNotice("Switch your connected wallet to Base Sepolia before recording.");
         return;
       }
@@ -843,6 +844,7 @@ function App() {
         priceCents,
         changeBps,
         asset.score,
+        { chainId: 84532 },
       );
       setTxHash(transaction.hash);
       setNotice(
