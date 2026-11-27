@@ -1342,11 +1342,20 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   .sl-app .topbar > .sl-brand { display: none; }
   .sl-app .topbar { flex-wrap: nowrap; }
 }
-@media (min-width: 761px) and (max-width: 1100px) {
-  .sl-sidebar { width: 72px; padding: 24px 10px; }
-  .sl-sidebar-brand { justify-content: center; padding: 0; }
-  .sl-sidebar-brand span, .sl-sidebar-caption, .sl-sidebar-nav button span, .sl-sidebar-footer { display: none; }
-  .sl-sidebar-nav { margin-top: 38px; }
-  .sl-app .sl-sidebar-nav button { justify-content: center; padding: 10px; }
-  .sl-app .main-column { margin-left: 72px; }
+@media (min-width: 761px) {
+  .sl-app .sl-sidebar-toggle { position: absolute; top: 27px; right: -15px; display: grid; place-items: center; width: 30px; height: 30px; min-height: 30px; padding: 0; border: 1px solid #565650; border-radius: 50%; background: #171717; color: #f5f5f0; }
+  .sl-sidebar-toggle svg { width: 17px; height: 17px; }
+  .sidebar-collapsed .sl-sidebar { width: 72px; padding: 24px 10px; }
+  .sidebar-collapsed .sl-sidebar-brand { justify-content: center; padding: 0; }
+  .sidebar-collapsed .sl-sidebar-brand span, .sidebar-collapsed .sl-sidebar-caption, .sidebar-collapsed .sl-sidebar-nav button span, .sidebar-collapsed .sl-sidebar-footer { display: none; }
+  .sidebar-collapsed .sl-sidebar-nav { margin-top: 38px; }
+  .sl-app.sidebar-collapsed .sl-sidebar-nav button { justify-content: center; padding: 10px; }
+  .sl-app.sidebar-collapsed .main-column { margin-left: 72px; }
+}
+
+@media (min-width: 761px) and (max-width: 950px) {
+  .sl-app:not(.sidebar-collapsed) .dash {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "hero" "wl" "side" "low";
+  }
 }
