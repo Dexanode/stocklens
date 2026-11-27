@@ -55,7 +55,7 @@ function AssetIcon({ symbol }) {
     ? `https://www.google.com/s2/favicons?domain=${companyDomains[symbol]}&sz=128`
     : logoTickers.has(ticker) ? `https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${ticker}.png` : null;
   const showLogo = logoUrl && !failed;
-  return <span className="asset-icon" aria-hidden="true">
+  return <span className="asset-icon" data-symbol={symbol} aria-hidden="true">
     {showLogo ? <img src={logoUrl} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : symbol.slice(0, 1)}
   </span>;
 }
