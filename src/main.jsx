@@ -14,7 +14,7 @@ import "./index.css";
 import "./b20.css";
 import "./market-layout.css";
 import { resolveShareId } from "./thesis-share.js";
-import { walletIsOnBaseSepolia } from "./wallet-network.js";
+import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -809,14 +809,14 @@ function App() {
       return;
     }
     setIsSending(true);
-    setNotice("Confirm the Base Sepolia proof transaction in your wallet…");
+    setNotice("Checking the connected wallet network…");
     try {
       const walletProvider = connector ? await connector.getProvider() : window.ethereum;
       if (!await walletIsOnBaseSepolia(connector, walletProvider, chainId)) {
         setNotice("Switch your connected wallet to Base Sepolia before recording.");
         return;
       }
-      const provider = new BrowserProvider(walletProvider);
+      const provider = new BrowserProvider(guardedWalletProvider(connector, walletProvider, chainId, wallet));
       const signer = await provider.getSigner();
       if ((await signer.getAddress()).toLowerCase() !== wallet.toLowerCase()) {
         setNotice("Connected wallet account changed. Reconnect before recording.");
