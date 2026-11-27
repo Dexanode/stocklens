@@ -16,6 +16,8 @@ import "./market-layout.css";
 import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
+import { dataQualityScore, retainLoadedHistory } from "./data-quality.js";
+import { legacyProofScore } from "./legacy-proof-score.js";
 import { proofChangeBps, displayProofChange } from "./proof-change.js";
 import { paperPosition, paperPlanIsValid } from "./paper-validation.js";
 
@@ -195,9 +197,9 @@ function SharedThesisPage({ thesis, marketAssets, onExit }) {
         <div className="shared-thesis-heading"><div><h1>{thesis.title}</h1><p>{thesis.symbol} · {thesis.assetName || "Tokenized equity"} · Base B20</p></div><span className={`workspace-status ${(thesis.status || "OPEN").toLowerCase()}`}>{thesis.status || "OPEN"}</span></div>
         <div className="shared-thesis-grid">
           <section className="shared-thesis-card shared-thesis-note"><span>THESIS</span><p>{thesis.note}</p><div className="shared-thesis-meta"><span>CREATED <b>{new Date(thesis.createdAt).toLocaleDateString([], { day: "2-digit", month: "short", year: "numeric" })}</b></span><span>MODEL <b>{thesis.source || "StockLens baseline"}</b></span></div></section>
-          <section className="shared-thesis-card"><span>OUTCOME SINCE ENTRY / LIVE NAV</span><strong className={change === null ? "" : change >= 0 ? "up" : "down"}>{change === null ? "NAV PENDING" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><div className="shared-thesis-metrics"><span>ENTRY <b>{thesis.entryPrice || "—"}</b></span><span>CURRENT <b>{current ? formatUSD(current) : "—"}</b></span><span>SCORE <b>{thesis.score ?? "—"}/100</b></span><span>CONVICTION <b>{thesis.conviction ?? "—"}/5</b></span><span>TARGET <b>{thesis.target === null || thesis.target === undefined ? "—" : `${thesis.target}%`}</b></span><span>REVIEWED <b>{(thesis.lastReviewedAt || thesis.reviewedAt) ? new Date(thesis.lastReviewedAt || thesis.reviewedAt).toLocaleDateString([], { day: "2-digit", month: "short" }) : "Not yet"}</b></span></div></section>
+          <section className="shared-thesis-card"><span>OUTCOME SINCE ENTRY / LIVE NAV</span><strong className={change === null ? "" : change >= 0 ? "up" : "down"}>{change === null ? "NAV PENDING" : `${change >= 0 ? "+" : ""}${change.toFixed(2)}%`}</strong><div className="shared-thesis-metrics"><span>ENTRY <b>{thesis.entryPrice || "—"}</b></span><span>CURRENT <b>{current ? formatUSD(current) : "—"}</b></span><span>RECORDED SCORE <b>{thesis.score ?? "—"}/100</b></span><span>CONVICTION <b>{thesis.conviction ?? "—"}/5</b></span><span>TARGET <b>{thesis.target === null || thesis.target === undefined ? "—" : `${thesis.target}%`}</b></span><span>REVIEWED <b>{(thesis.lastReviewedAt || thesis.reviewedAt) ? new Date(thesis.lastReviewedAt || thesis.reviewedAt).toLocaleDateString([], { day: "2-digit", month: "short" }) : "Not yet"}</b></span></div></section>
         </div>
-        <div className="shared-thesis-proof"><span>DATA CONTEXT</span><b>B20 NAV / BASE MAINNET 8453</b><b>PAPER REGISTRY / BASE SEPOLIA 84532</b><small>Shared snapshot. This page does not execute trades, custody funds, or provide financial advice.</small></div>
+        <div className="shared-thesis-proof"><span>DATA CONTEXT</span><b>B20 NAV / BASE MAINNET 8453</b><b>PAPER REGISTRY / BASE SEPOLIA 84532</b><small>Shared snapshot. Recorded scores may use older methods and are not an asset-risk rating. This page does not execute trades, custody funds, or provide financial advice.</small></div>
         <div className="shared-thesis-actions"><button type="button" onClick={copyLink}>COPY LINK ↗</button><button type="button" onClick={onExit}>OPEN STOCKLENS TERMINAL ↗</button><span role="status">{copyStatus}</span></div>
       </main>
     </div>
@@ -467,6 +469,7 @@ function App() {
   const { address, connector, chainId } = useAccount();
   const asset = marketAssets[selected];
   const assetNavStatus = navFreshness(asset, marketClock);
+  const assetHistoryAvailable = Array.isArray(asset.navHistory) && asset.navHistory.filter(row => Number.isFinite(Number(row?.price)) && Number(row.price) > 0).length >= 3;
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try { window.localStorage.setItem("stocklens-theme", theme); } catch { /* theme persistence is optional */ }
@@ -541,10 +544,10 @@ function App() {
     portfolioRationale:
       "Keep the position sized to the quality of the signal and review it against the rest of the portfolio.",
   };
-  const displayedScore = Number.isFinite(Number(insight.score)) ? Number(insight.score) : Number(asset.score || 0);
-  const displayedRisk = insight.risk || asset.risk || "Unknown";
+  const displayedScore = dataQualityScore(asset, marketClock);
+  const displayedRisk = "Not assessed";
   const modelLabel = riskLoading ? "MODEL / THINKING…" : matchingInsight ? (insight.fallback ? "MODEL / FALLBACK" : "MODEL / V I K E Y") : "MODEL / BASELINE";
-  const scoreBasis = insight.scoreBasis ? `fresh ${insight.scoreBasis.freshness} · supply ${insight.scoreBasis.supply} · history ${insight.scoreBasis.history} · change ${insight.scoreBasis.change}` : "live NAV quality and model context";
+  const scoreBasis = "NAV availability · recent timestamp · history observations · comparison change / 25 points each";
   const allocation = useMemo(() => {
     const price = Number(String(asset.price).replace(/[$,]/g, ""));
     return Number.isFinite(price) && price > 0 ? budget / price : 0;
@@ -632,7 +635,7 @@ function App() {
             return [symbol, { ...item, navHistory: history }];
           }));
           try { window.localStorage.setItem("stocklens-nav-history-v1", JSON.stringify(stored)); } catch { /* snapshot storage is optional */ }
-          setMarketAssets((current) => ({ ...current, ...nextData }));
+          setMarketAssets((current) => ({ ...current, ...Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { ...item, navHistory: retainLoadedHistory(current[symbol]?.navHistory, item.navHistory) }])) }));
           if (now - lastHistoryRequest >= 15 * 60e3 && payload.source !== "Base B20 registry fallback") {
             lastHistoryRequest = now;
             fetch("/api/nav-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshots: Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { price: Number(String(item.price).replace(/[$,]/g, "")) }])) }) })
@@ -673,7 +676,7 @@ function App() {
       totalSupply: asset.totalSupply,
       multiplier: asset.multiplier,
       pausedFeatures: asset.pausedFeatures,
-      dataQuality: asset.dataQuality,
+      dataQuality: { ...asset.dataQuality, history: assetHistoryAvailable },
     };
     fetch("/api/risk", {
       method: "POST",
@@ -709,7 +712,7 @@ function App() {
       })
       .finally(() => { if (active) setRiskLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [selected, asset.navUpdatedAt, asset.price, assetNavStatus]);
+  }, [selected, asset.navUpdatedAt, asset.price, assetNavStatus, assetHistoryAvailable]);
 
   useEffect(() => {
     setAiDetailsOpen(false);
@@ -867,7 +870,7 @@ function App() {
         selected,
         priceCents,
         changeBps,
-        asset.score,
+        legacyProofScore({ ...asset, dataQuality: { ...asset.dataQuality, history: assetHistoryAvailable } }),
         { chainId: 84532 },
       );
       setTxHash(transaction.hash);
@@ -933,8 +936,8 @@ function App() {
       const universe = Object.entries(marketAssets).map(([symbol, item]) => ({
         symbol,
         name: item.name,
-        risk: item.risk,
-        score: item.score,
+        risk: "Unknown",
+        score: dataQualityScore(item, Date.now()),
         price: item.price,
         change: item.change,
         volume: item.volume,
@@ -943,7 +946,7 @@ function App() {
         totalSupply: item.totalSupply,
         multiplier: item.multiplier,
         pausedFeatures: item.pausedFeatures,
-        dataQuality: item.dataQuality,
+        dataQuality: { ...item.dataQuality, history: Array.isArray(item.navHistory) && item.navHistory.length >= 3 },
         navHistory: Array.isArray(item.navHistory) ? item.navHistory.slice(-260) : [],
         volatility: item.volatility ?? null,
       }));
@@ -1557,7 +1560,7 @@ function App() {
               </p>
               <div className="method-note">
                 <span>Method note</span>
-                <b>Momentum + liquidity + volatility</b>
+                <b>Data availability · not asset risk</b>
                 <small>
                   Model output is illustrative and not financial advice.
                 </small>
@@ -1580,13 +1583,13 @@ function App() {
                     "--ring": asset.color,
                   }}
                 >
-                  <strong>{displayedScore || "—"}</strong>
+                  <strong>{displayedScore}</strong>
                   <small>/100</small>
                 </div>
                 <div>
-                  <span className="muted-label">SIGNAL QUALITY</span>
+                  <span className="muted-label">DATA AVAILABILITY / NOT ASSET RISK</span>
                   <h3>
-                    {displayedRisk} <span>risk</span>
+                    Asset risk <span>not assessed</span>
                   </h3>
                   <p>{riskLoading || !matchingInsight ? (assetNavStatus === "delayed" ? "NAV is delayed; refreshing research context." : assetNavStatus === "unknown" ? "NAV timestamp is unavailable; refreshing research context." : assetNavStatus === "unavailable" ? "NAV is unavailable; refreshing research context." : "Updating research context…") : riskBriefs[selected]}</p>
                 </div>
@@ -1675,6 +1678,7 @@ function App() {
                   <b>{portfolioPlan ? portfolioPlan.regime : "READY"}</b>
                 </div>
                 {portfolioPlan && <div className="agent-meta"><span>Confidence <b>{portfolioPlan.confidence ?? "—"}/100</b></span><span>Universe <b>{Object.keys(marketAssets).length} B20</b></span></div>}
+                {portfolioPlan && <p>Allocation uses available data; data availability is not an assessment of asset risk.</p>}
                 {portfolioPlan && <p role="status">Source: {portfolioPlan.source || "Unknown"}{portfolioPlan.fallback ? ` · Fallback reason: ${portfolioPlan.fallbackReason || "Unavailable"}` : ""}</p>}
                 <p>
                   Baca seluruh B20 watchlist dan paper holdings untuk menyusun target allocation serta langkah rebalance.
@@ -1815,8 +1819,7 @@ function App() {
               )}
               {notice && <p className="trade-notice">{notice}</p>}
               <p className="sim-note">
-                Records the thesis in StockLensRegistry on Base Sepolia (84532).
-                Requires testnet gas.
+                Records a thesis on Base Sepolia (84532). The contract retains its legacy heuristic score; it is not a validated asset-risk rating. Requires testnet gas.
               </p>
             </div>
           </section>
@@ -1844,7 +1847,7 @@ function App() {
                       <option value="1">01 / exploratory</option><option value="2">02 / forming</option><option value="3">03 / measured</option><option value="4">04 / strong</option><option value="5">05 / highest</option>
                     </select>
                   </label>
-                  <div className="thesis-context"><span>MODEL CONTEXT</span><b>{displayedScore}/100 · {displayedRisk}</b><small>{modelLabel}</small></div>
+                  <div className="thesis-context"><span>DATA AVAILABILITY</span><b>{displayedScore}/100 · Risk not assessed</b><small>{modelLabel}</small></div>
                 </div>
                 <button className="workspace-save" type="button" onClick={saveThesis}>SAVE THESIS TO WORKSPACE <b>↗</b></button>
                 <small className="workspace-note">Saved locally in this browser. No order, custody, or financial advice.</small>
@@ -1862,7 +1865,7 @@ function App() {
                         <h3>{item.title}</h3>
                         <p>{item.note}</p>
                         <div className="workspace-outcome"><span>OUTCOME SINCE ENTRY</span><strong className={outcome.change === null ? "" : outcome.change >= 0 ? "up" : "down"}>{outcome.change === null ? "NAV PENDING" : `${outcome.change >= 0 ? "+" : ""}${outcome.change.toFixed(2)}%`}</strong><small>{outcome.current === null ? "Awaiting current NAV" : `Entry ${outcome.entry.toFixed(2)} → Now ${outcome.current.toFixed(2)}`}</small></div>
-                        <div className="workspace-metrics"><span>SCORE <b>{item.score}/100</b></span><span>CONVICTION <b>{item.conviction}/5</b></span><span>TARGET <b>{item.target === null ? "—" : `${item.target}%`}</b></span><span>REVIEWS <b>{item.reviewCount || 0}</b></span></div>
+                        <div className="workspace-metrics"><span>RECORDED SCORE <b>{item.score}/100</b></span><span>CONVICTION <b>{item.conviction}/5</b></span><span>TARGET <b>{item.target === null ? "—" : `${item.target}%`}</b></span><span>REVIEWS <b>{item.reviewCount || 0}</b></span></div>
                         <div className="workspace-followup"><div><span>AGENT FOLLOW-UP</span><b>{followUpLoading[item.id] ? "CHECKING MARKET CONTEXT…" : followUps[item.id]?.nextAction || "Waiting for market context"}</b></div>{followUps[item.id] && <><small>{followUps[item.id].reviewWindow} · Confidence {followUps[item.id].confidence}/100</small><div className="followup-triggers">{followUps[item.id].triggers.map((trigger) => <em key={trigger}>{trigger}</em>)}</div></>}<button type="button" onClick={() => runFollowUp(item)}>{followUpLoading[item.id] ? "RUNNING…" : "RUN FOLLOW-UP ↗"}</button></div>
                         <div className="workspace-actions"><button type="button" onClick={() => { pick(item.symbol); document.getElementById("watchlist")?.scrollIntoView({ behavior: "smooth" }); }}>OPEN ASSET ↗</button><button type="button" onClick={() => reviewThesis(item.id)}>REVIEW OUTCOME</button><button type="button" onClick={() => shareThesis(item)}>SHARE ↗</button>{item.id?.startsWith("th_") && !editTokenFor(item.id) ? <button type="button" onClick={() => duplicateThesis(item)}>DUPLICATE AS NEW ↗</button> : null}<select value={item.status} onChange={(event) => updateThesisStatus(item.id, event.target.value)} aria-label={`Update ${item.symbol} thesis status`}><option value="OPEN">Open</option><option value="MONITORING">Monitoring</option><option value="INVALIDATED">Invalidated</option><option value="CLOSED">Closed</option></select></div>
                         {shareLink?.id === item.id && <p role="status">Share link ready: <a href={shareLink.url} target="_blank" rel="noreferrer">Open shared thesis ↗</a> <input aria-label="Shareable thesis link" value={shareLink.url} readOnly onFocus={(event) => event.target.select()} /></p>}
@@ -1904,7 +1907,7 @@ function App() {
                 </h2>
                 <p>
                   Research proofs read through the StockLens history proxy on
-                  Base Sepolia (84532). B20 NAV remains on Base mainnet (8453).
+                  Base Sepolia (84532). Recorded contract scores use a legacy heuristic and are not validated asset-risk ratings. B20 NAV remains on Base mainnet (8453).
                 </p>
               </div>
               <a
@@ -1955,7 +1958,7 @@ function App() {
                         </b>
                       </span>
                       <span>
-                        <small>RISK</small>
+                        <small>RECORDED SCORE</small>
                         <b>{item.score}/100</b>
                       </span>
                       <span className="history-wallet">

@@ -1,5 +1,6 @@
 import { isBlockedCountry } from './lib/geo.js'
 import { checkRateLimit } from './lib/rate-limit.js'
+import { dataQualityScore } from '../src/data-quality.js'
 
 // Best-effort per-IP limit (in-memory, per serverless instance — see
 // api/lib/rate-limit.js). 10 req/min/IP: the Portfolio Agent is a heavy
@@ -17,12 +18,12 @@ function fallbackPlan(universe, holdings, reason, detail = {}) {
   raw.map((value, index) => ({ value, index })).sort((left, right) => (right.value - Math.floor(right.value)) - (left.value - Math.floor(left.value))).forEach(({ index }) => { if (remainder > 0) { rounded[index] += 1; remainder -= 1 } })
   const bySymbol = new Map(usable.map((asset, index) => [asset.symbol, rounded[index]]))
   return {
-    summary: holdings.length ? 'Fallback rebalance built from live NAV quality and score because the AI response was unavailable.' : 'Starter allocation built from live NAV quality and score while the AI response is unavailable.',
+    summary: holdings.length ? 'Fallback rebalance weighted by data availability, not asset risk, because the AI response was unavailable.' : 'Starter allocation weighted by data availability, not asset risk, while the AI response is unavailable.',
     regime: 'Balanced',
-    allocations: universe.map((asset) => ({ symbol: asset.symbol, targetPercent: bySymbol.get(asset.symbol) || 0, reason: bySymbol.has(asset.symbol) ? `Weighted from score ${asset.score}/100 and NAV availability.` : 'No usable NAV reference; kept at 0%.' })),
+    allocations: universe.map((asset) => ({ symbol: asset.symbol, targetPercent: bySymbol.get(asset.symbol) || 0, reason: bySymbol.has(asset.symbol) ? `Weighted from data availability ${asset.score}/100, not investment risk.` : 'No usable NAV reference; kept at 0%.' })),
     actions: ['Review current-vs-target allocation before applying.', 'Keep all positions paper-only; no order was sent.'],
     rebalanceNote: 'Deterministic fallback; rerun the agent when Vikey is available.',
-    confidence: 35,
+    confidence: Math.min(35, ...usable.map((asset) => asset.score)),
     source: 'StockLens deterministic fallback',
     paperOnly: true,
     fallback: true,
@@ -82,8 +83,8 @@ export default async function handler(request, response) {
     const compactUniverse = universe.map((asset) => ({
       symbol: String(asset.symbol || '').slice(0, 24),
       name: String(asset.name || asset.symbol || '').slice(0, 80),
-      risk: String(asset.risk || 'Moderate').slice(0, 24),
-      score: Number.isFinite(Number(asset.score)) ? Number(asset.score) : 50,
+      risk: 'Unknown',
+      score: dataQualityScore(asset),
       price: String(asset.price || '—').slice(0, 32),
       change: String(asset.change || '—').slice(0, 32),
       volume: String(asset.volume || 'B20 NAV reference').slice(0, 48),
@@ -124,7 +125,7 @@ export default async function handler(request, response) {
         messages: [
           {
             role: 'system',
-            content: 'You are StockLens Portfolio Agent. Return only valid JSON with exactly these keys: summary (string), regime (one of Defensive, Balanced, Opportunistic), allocations (one object for every supplied universe symbol, each with symbol, targetPercent integer 0-100, reason string), actions (array of 2 concise strings), rebalanceNote (string), confidence (integer 0-100). Use only supplied B20 NAV/reference, supply, freshness, pause, data-quality, historyChangePct, volatilityPct and current paper holdings. Target percentages must sum to 100 and must not be equal by default: weight assets using score, momentum, volatility and data quality, give 0% to assets without a usable NAV, and explain missing history. Keep this educational and paper-only: never recommend live execution, leverage, custody, or guaranteed returns. If holdings are empty, describe a starter allocation. Do not invent news, fundamentals, ownership, or liquidity.'
+            content: 'You are StockLens Portfolio Agent. Return only valid JSON with exactly these keys: summary (string), regime (one of Defensive, Balanced, Opportunistic), allocations (one object for every supplied universe symbol, each with symbol, targetPercent integer 0-100, reason string), actions (array of 2 concise strings), rebalanceNote (string), confidence (integer 0-100). Use only supplied B20 NAV/reference, supply, freshness, pause, data-quality, historyChangePct, volatilityPct and current paper holdings. Target percentages must sum to 100 and must not be equal by default: the score is data availability only and is not investment risk; never label an asset as low-risk, safe, high-risk, or assign asset risk; use observations and data availability, give 0% to assets without a usable NAV, and explain missing history. Keep this educational and paper-only: never recommend live execution, leverage, custody, or guaranteed returns. If holdings are empty, describe a starter allocation. Do not invent news, fundamentals, ownership, or liquidity.'
           },
           { role: 'user', content: JSON.stringify({ universe: compactUniverse, currentPaperHoldings: compactHoldings }) },
         ],
@@ -167,9 +168,13 @@ export default async function handler(request, response) {
         finishReason: typeof payload.choices?.[0]?.finish_reason === 'string' ? payload.choices[0].finish_reason.slice(0, 32) : null,
       }))
     }
+    const prose = [result.summary, result.rebalanceNote, ...(result.actions || []), ...allocations.map(item => item.reason)].join(' ')
+    if (/(?:low(?:er)?|high(?:er)?|moderate|elevated|safe)\s*[- ]?\s*risk|risk\s*(?:is|:|of)?\s*(?:low(?:er)?|high(?:er)?|moderate|elevated)/i.test(prose)) return response.status(200).json(fallbackPlan(compactUniverse, compactHoldings, 'unsupported_risk_claim'))
     const confidenceMap = { low: 35, medium: 60, high: 80 }
     const rawConfidence = Number(result.confidence)
-    const confidence = Number.isFinite(rawConfidence) ? Math.round(Math.max(0, Math.min(100, rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence))) : (confidenceMap[String(result.confidence || '').toLowerCase()] || 50)
+    const modelConfidence = Number.isFinite(rawConfidence) ? Math.round(Math.max(0, Math.min(100, rawConfidence <= 1 ? rawConfidence * 100 : rawConfidence))) : (confidenceMap[String(result.confidence || '').toLowerCase()] || 50)
+    const selectedScores = allocations.filter(item => item.targetPercent > 0).map(item => compactUniverse.find(asset => asset.symbol === item.symbol)?.score ?? 0)
+    const confidence = Math.min(modelConfidence, ...selectedScores)
     const normalizedAllocations = allocations.map((item) => ({
       ...item,
       targetPercent: Math.max(0, Math.min(100, Math.round(Number(item.targetPercent) || 0))),

@@ -70,3 +70,7 @@ Security headers (CSP, `X-Frame-Options`, HSTS, and others) are set in `vercel.j
 
 - [BaseScan registry](https://sepolia.basescan.org/address/0xA54A6c46Fc5c5D0f0Fca952f3445c35ad8e6dD1C)
 - [Blockscout registry](https://base-sepolia.blockscout.com/address/0xA54A6c46Fc5c5D0f0Fca952f3445c35ad8e6dD1C)
+
+## Data availability and asset risk
+
+The 0–100 data-availability score is the sum of four checks worth 25 points each: a usable NAV reference, a source timestamp within one hour, at least three NAV observations, and an available comparison change. It measures available inputs, not an asset risk rating, liquidity, price safety, or expected return. Asset risk is not assessed. Portfolio allocations are paper-only, and any model confidence is capped by input availability. The deployed contract keeps the legacy `riskScore` field and its heuristic; it is not a validated asset-risk rating. Proof scores do not represent the data-availability score, and older thesis and proof scores may use different methods.
