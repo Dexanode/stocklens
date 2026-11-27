@@ -543,6 +543,20 @@ html[data-theme="dark"] .wl-active { box-shadow: inset 0 0 0 1px #5c4d86; }
   font-weight: 600;
 }
 .sl-app .asset-icon img { width: 22px; height: 22px; object-fit: contain; }
+.sl-app .asset-row .asset-name,
+.sl-app .asset-row .asset-name small {
+  min-width: 0 !important;
+  max-width: 100%;
+  overflow: hidden !important;
+  text-overflow: ellipsis;
+  white-space: nowrap !important;
+}
+.sl-app .asset-name small { display: block; }
+.sl-app .asset-icon img {
+  background: #fff;
+  border-radius: 5px;
+  box-shadow: 0 0 0 1px rgba(23, 23, 23, 0.22);
+}
 .sl-app .asset-name b,
 .sl-app .asset-price b {
   color: var(--ink) !important;
@@ -655,7 +669,7 @@ html[data-theme="dark"] .navtick.flash { color: #171717; }
   transform: translateY(-50%);
   padding: 3px 7px;
   border-radius: 6px;
-  background: var(--stroke, var(--up));
+  background: #171717;
   color: #fff;
   font-size: 13px;
   font-weight: 500;
@@ -790,7 +804,7 @@ html[data-theme="dark"] .book-row.flash { animation-name: book-flash-dark; }
 html[data-theme="dark"] .proof-new { background: #241f36; border-color: #3d3560; }
 
 .m-only { display: none; }
-.chips { display: flex; gap: 8px; overflow-x: auto; margin: 0 -16px 8px; padding: 2px 16px 8px; scrollbar-width: none; }
+.chips { gap: 8px; overflow-x: auto; margin: 0 -16px 8px; padding: 2px 16px 8px; scrollbar-width: none; }
 .chip {
   display: inline-flex;
   flex: 0 0 auto;
@@ -864,6 +878,7 @@ html[data-theme="dark"] .track .cur { background: #5c5c56; }
   box-shadow: var(--sh-3);
 }
 .toast small { display: block; color: #c9c9c1 !important; font-size: 14px !important; }
+.book-scroll { max-width: 100%; overflow-x: auto; }
 .book-table { width: 100%; border-collapse: collapse; }
 .book-table th { padding: 10px 16px; color: var(--muted); font-size: 14px; font-weight: 400; text-align: right; }
 .book-table td { padding: 11px 16px; border-top: 1px solid var(--line-2); font-size: 15px; text-align: right; }
@@ -1067,6 +1082,19 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   border-radius: 22px !important;
 }
 .gcard h2 { margin: 16px 0 10px !important; font-size: 32px !important; letter-spacing: -0.035em !important; }
+.gcard select,
+.sl-gate select {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  min-height: 48px;
+  border: 1px solid var(--line) !important;
+  border-radius: 12px !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  padding: 10px 14px !important;
+}
+.sl-app .portfolio-mini { max-width: none !important; width: 100% !important; }
 .gcard p { color: var(--muted); font-size: 15.5px; }
 .sl-gate .compliance-check { min-height: 44px; color: var(--ink-2); font-size: 15px; }
 .sl-gate .compliance-check input { width: 22px; height: 22px; accent-color: var(--ink); }
@@ -1099,23 +1127,37 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
 @media (max-width: 760px) {
   .d-only { display: none !important; }
   .m-only { display: block; }
+  .chips { display: flex; margin: 0 -16px 4px; padding: 0 16px 2px; }
   .chips.m-only { display: flex; }
-  .sl-app .topbar { flex-wrap: wrap; gap: 8px; min-height: 60px; padding: 10px 16px !important; }
+  .chip { height: 40px; min-height: 40px; }
+  .sl-app .topbar { flex-wrap: nowrap; gap: 8px; min-height: 52px; padding: 8px 12px !important; }
   .sl-nav, .sl-app .base-chip, .sl-app .status { display: none !important; }
-  .sl-app .top-actions { flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+  .sl-app .top-actions { flex-wrap: nowrap; justify-content: flex-end; gap: 6px; min-width: 0; }
   .sl-app .paper-badge, .sl-app .theme-toggle, .sl-app .wallet-button { display: inline-flex !important; }
-  .sl-app main { padding: 4px 16px 120px; }
-  .phead { display: block; margin: 2px 0 8px; }
-  .bookchip { margin-top: 8px; padding: 8px 12px; }
-  .price-row { margin: 8px 0 2px; }
-  .chartbar { margin-top: 8px; }
-  .sl-bnav button { font-size: 13px !important; }
-  .page-title { font-size: 28px !important; }
-  .hero { padding: 14px 14px 0; }
-  .dash { display: flex; flex-direction: column; gap: 16px; }
-  .price { font-size: 48px !important; }
-  .chart-slot, .chart-block { min-height: 250px; }
-  .chart-stage { min-height: 200px; }
+  .sl-app .wallet-button { max-width: 132px; overflow: hidden; text-overflow: ellipsis; }
+  .sl-app main { padding: 2px 12px 136px; }
+  .sl-app .asset-list { max-height: none !important; overflow: visible !important; }
+  .phead { display: block; margin: 0 0 6px; }
+  .lede { margin-top: 4px; }
+  .phead-actions { margin-top: 6px; }
+  .phead-actions .btn { height: 36px; min-height: 36px; }
+  .bookchip { margin-top: 6px; padding: 8px 10px; gap: 10px; }
+  .bookchip .v { font-size: 18px; }
+  .price-row { margin: 4px 0 0; }
+  .navline { margin-top: 2px; gap: 6px 10px; }
+  .chartbar { margin-top: 6px; }
+  .page-title { font-size: 26px !important; line-height: 1.05 !important; }
+  .hero { padding: 12px 12px 0; }
+  .hero-top { gap: 8px; }
+  .asset-id h2 { font-size: 18px !important; }
+  .dash { display: flex; flex-direction: column; gap: 12px; }
+  .price { font-size: 44px !important; }
+  .chart-slot, .chart-block { min-height: 168px; }
+  .chart-stage { min-height: 132px; }
+  .col, .card, .ag-grid { min-width: 0; max-width: 100%; }
+  .card { overflow: hidden; }
+  .book-scroll { width: 100%; max-width: 100%; overflow-x: auto; }
+  .book-table { min-width: 560px; }
   .statstrip { grid-template-columns: 1fr 1fr; margin: 12px -16px 0; }
   .stat:nth-child(2) { border-right: 0; }
   .stat:nth-child(-n + 2) { border-bottom: 1px solid var(--line-2); }
@@ -1135,7 +1177,7 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   .sl-app .rebalance-summary > strong:nth-of-type(3) { display: none; }
   .book-row { grid-template-columns: 30px minmax(0, 1fr) auto; }
   .book-row .r:last-child { display: none; }
-  .book-table { display: block; overflow-x: auto; }
+  .book-table { display: table; width: 560px; max-width: none; }
   body { padding-bottom: 0 !important; }
   .sl-bnav.mobile-nav {
     position: fixed;

@@ -20,6 +20,12 @@ function shortAddr(value) {
   return text.length < 12 ? text || "—" : `${text.slice(0, 6)}…${text.slice(-4)}`;
 }
 
+function clampNoise(value, epsilon) {
+  const number = Number(value);
+  if (!Number.isFinite(number) || Math.abs(number) < epsilon) return 0;
+  return number;
+}
+
 function toneOf(change) {
   const text = String(change || "").trim();
   if (text.startsWith("+")) return "up";
@@ -156,7 +162,7 @@ function Gate({ ui, item }) {
             </motion.div>
           </div>
           <motion.div className="gate-pills" initial="hidden" animate="show" variants={item}>
-            <span className="paper-badge">Base mainnet · NAV data</span>
+            <span className="base-chip">Base mainnet · NAV data</span>
             <span className="base-chip">Base Sepolia · optional proof</span>
           </motion.div>
         </section>
@@ -218,7 +224,7 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
         <div className="bookchip">
           <div><div className="k">Paper book</div><NumberFlow className="v num" value={ui.portfolioMetrics.total || 0} format={{ style: "currency", currency: "USD" }} transformTiming={flowTiming} spinTiming={flowTiming} /></div>
           <div className="sep" />
-          <div><div className="k">Unrealized P/L</div><div className={`v num ${Math.abs(ui.portfolioMetrics.pnl) < 0.005 ? "flat" : ui.portfolioMetrics.pnl > 0 ? "up" : "down"}`}><NumberFlow value={ui.portfolioMetrics.pnl || 0} format={{ style: "currency", currency: "USD", signDisplay: "exceptZero" }} transformTiming={flowTiming} spinTiming={flowTiming} /></div></div>
+          <div><div className="k">Unrealized P/L</div><div className={`v num ${clampNoise(ui.portfolioMetrics.pnl, 0.005) > 0 ? "up" : clampNoise(ui.portfolioMetrics.pnl, 0.005) < 0 ? "down" : "flat"}`}><NumberFlow value={clampNoise(ui.portfolioMetrics.pnl, 0.005)} format={{ style: "currency", currency: "USD", signDisplay: "exceptZero" }} transformTiming={flowTiming} spinTiming={flowTiming} /></div></div>
           <div className="sep d-only" />
           <div className="d-only"><div className="k">Positions</div><div className="v num">{ui.portfolioMetrics.rows.length}</div></div>
         </div>
@@ -259,7 +265,7 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
                 <Icon symbol={row.symbol} />
                 <span><b>{row.symbol}</b> <span className="muted">· {ui.portfolioMetrics.total ? `${((row.currentValue / ui.portfolioMetrics.total) * 100).toFixed(0)}%` : "—"}</span></span>
                 <span className="r num">{ui.formatUSD(row.currentValue)}</span>
-                <span className={`r num ${row.pnl >= 0 ? "up" : "down"}`}>{ui.formatUSD(row.pnl)}</span>
+                <span className={`r num ${clampNoise(row.pnl, 0.005) > 0 ? "up" : clampNoise(row.pnl, 0.005) < 0 ? "down" : "flat"}`}>{ui.formatUSD(clampNoise(row.pnl, 0.005))}</span>
               </div>
             ))}
           </motion.section>
@@ -525,7 +531,7 @@ function AgentScreen({ ui, item, go, Icon }) {
                     </div>
                     <span className="n num muted">{row.currentPercent.toFixed(0)}%</span>
                     <span className="n num">{row.targetPercent}%</span>
-                    <span className={`delta num ${row.delta > 0.5 ? "up" : row.delta < -0.5 ? "down" : "flat"}`}>{row.delta > 0 ? "+" : ""}{row.delta.toFixed(0)} pt</span>
+                    <span className={`delta num ${clampNoise(row.delta, 0.5) > 0 ? "up" : clampNoise(row.delta, 0.5) < 0 ? "down" : "flat"}`}>{clampNoise(row.delta, 0.5) > 0 ? "+" : ""}{clampNoise(row.delta, 0.5).toFixed(0)} pt</span>
                   </div>
                 ))}
               </div>
@@ -544,7 +550,7 @@ function AgentScreen({ ui, item, go, Icon }) {
               </motion.div>
             )}
             {ui.portfolioMetrics.rows.length === 0 ? <p className="lede" style={{ padding: "0 20px 18px" }}>The paper book is empty.</p> : (
-              <table className="book-table">
+              <div className="book-scroll"><table className="book-table">
                 <thead><tr><th>Asset</th><th>Units</th><th>NAV</th><th>Value</th><th>Weight</th><th>P/L since entry</th></tr></thead>
                 <tbody>
                   {ui.portfolioMetrics.rows.map((row) => {
@@ -557,12 +563,12 @@ function AgentScreen({ ui, item, go, Icon }) {
                         <td className="num">{ui.marketAssets[row.symbol]?.price || "—"}</td>
                         <td className="num">{ui.formatUSD(row.currentValue)}</td>
                         <td className="num">{ui.portfolioMetrics.total ? `${((row.currentValue / ui.portfolioMetrics.total) * 100).toFixed(0)}%` : "—"}</td>
-                        <td className={`num ${row.pnl >= 0 ? "up" : "down"}`}>{ui.formatUSD(row.pnl)}</td>
+                        <td className={`num ${clampNoise(row.pnl, 0.005) > 0 ? "up" : clampNoise(row.pnl, 0.005) < 0 ? "down" : "flat"}`}>{ui.formatUSD(clampNoise(row.pnl, 0.005))}</td>
                       </tr>
                     );
                   })}
                 </tbody>
-              </table>
+              </table></div>
             )}
           </motion.section>
         </div>
@@ -650,7 +656,7 @@ function PaperScreen({ ui, item, Icon, Wallet }) {
               <div key={row.symbol}>
                 <b>{row.symbol}</b>
                 <small>{ui.formatUnits(row.units)} units · {ui.formatUSD(row.currentValue)}</small>
-                <strong className={row.pnl >= 0 ? "up" : "down"}>{ui.formatUSD(row.pnl)}</strong>
+                <strong className={clampNoise(row.pnl, 0.005) > 0 ? "up" : clampNoise(row.pnl, 0.005) < 0 ? "down" : "flat"}>{ui.formatUSD(clampNoise(row.pnl, 0.005))}</strong>
                 <button className="remove-position" type="button" onClick={() => ui.removePosition(row.symbol)} aria-label={`Remove ${row.symbol}`}>×</button>
               </div>
             ))}
