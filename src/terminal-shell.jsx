@@ -83,14 +83,17 @@ function SidebarIcon({ name }) {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name]}</svg>;
 }
 
-function Sidebar({ active, go }) {
+function Sidebar({ active, go, collapsed, onToggle }) {
   const links = [["markets", "Markets"], ["brief", "Research"], ["agent", "Portfolio Agent"], ["paper", "Paper lab"], ["theses", "Theses"]];
   return <aside className="sl-sidebar" aria-label="StockLens navigation">
     <button className="sl-sidebar-brand" type="button" onClick={() => go("markets")} aria-label="StockLens home">
       <img src="/brand-icon-dark.svg?v=animated1" alt="" /><span>StockLens</span>
     </button>
+    <button className="sl-sidebar-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} aria-controls="sidebar-sections" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={collapsed ? "m9 5 7 7-7 7" : "m15 5-7 7 7 7"} /></svg>
+    </button>
     <div className="sl-sidebar-caption">RESEARCH WORKSPACE</div>
-    <nav className="sl-sidebar-nav" aria-label="Sections">
+    <nav id="sidebar-sections" className="sl-sidebar-nav" aria-label="Sections">
       {links.map(([key, label]) => <button key={key} type="button" className={active === key ? "on" : ""} aria-label={label} aria-current={active === key ? "page" : undefined} title={label} onClick={() => go(key, key === "brief" ? "lens" : undefined)}><SidebarIcon name={key} /><span>{label}</span></button>)}
     </nav>
     <div className="sl-sidebar-footer"><span>BASE MAINNET · NAV</span><span>BASE SEPOLIA · PROOFS</span><small>Paper research only</small></div>
@@ -99,6 +102,17 @@ function Sidebar({ active, go }) {
 
 function ShellInner({ ui }) {
   const reduce = useReducedMotion();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      const saved = window.localStorage.getItem("stocklens-sidebar-collapsed");
+      return saved === null ? window.matchMedia("(max-width: 1100px)").matches : saved === "true";
+    } catch { return false; }
+  });
+  function toggleSidebar() {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try { window.localStorage.setItem("stocklens-sidebar-collapsed", String(next)); } catch {}
+  }
   const [distance, setDistance] = useState(10);
   const [section, setSection] = useState("markets");
   const [chartIntro, setChartIntro] = useState(true);
@@ -136,12 +150,12 @@ function ShellInner({ ui }) {
   }
 
   return (
-    <div className="terminal-app sl-app">
+    <div className={`terminal-app sl-app${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
       <Ridgeline />
       <PaperGrain />
       {!ui.complianceAccepted && <Gate ui={ui} item={item} />}
       {ui.complianceAccepted && <>
-        <Sidebar active={active} go={go} />
+        <Sidebar active={active} go={go} collapsed={sidebarCollapsed} onToggle={toggleSidebar} />
         <div className="main-column" id="top">
           <header className="topbar">
             <a className="sl-brand" href="#top" onClick={(event) => { event.preventDefault(); go("markets"); }}>
