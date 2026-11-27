@@ -37,7 +37,7 @@ const wagmiConfig = getDefaultConfig({
   appName: "StockLens",
   appDescription: "Onchain research terminal for tokenized stock experiments.",
   appUrl: "https://stocklens-black-six.vercel.app",
-  appIcon: "https://stocklens-black-six.vercel.app/favicon.svg",
+  appIcon: "https://stocklens-black-six.vercel.app/favicon.svg?v=animated1",
   projectId: import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "00000000000000000000000000000001",
   chains: [baseSepolia],
   ssr: false,
@@ -377,8 +377,8 @@ function StockLensLogo({ compact = false }) {
       className={`brand-lockup ${compact ? "compact" : ""}`}
       aria-label="StockLens"
     >
-      <img className="brand-logo brand-logo-light" src="/brand-icon-light.svg" alt="" />
-      <img className="brand-logo brand-logo-dark" src="/brand-icon-dark.svg" alt="" />
+      <img className="brand-logo brand-logo-light" src="/brand-icon-light.svg?v=animated1" alt="" />
+      <img className="brand-logo brand-logo-dark" src="/brand-icon-dark.svg?v=animated1" alt="" />
       <span className="brand-wordmark">
         <b>STOCK</b>LENS
       </span>
