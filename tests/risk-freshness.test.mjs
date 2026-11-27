@@ -30,3 +30,16 @@ test('current NAV passes computed status and timestamp to Vikey', async () => {
   assert.equal(response.navStatus, 'current')
   assert.equal(response.fallback, false)
 })
+test('model confidence and asset risk are bounded by data availability', async () => {
+  const response = await run({...item, navUpdatedAt:new Date().toISOString()}, async () => ({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'Available data is limited.',bull:'NAV available.',bear:'No trend history.',risk:'Lower',score:99,confidence:99,catalysts:[],risks:[]})}}]})}))
+  assert.equal(response.risk,'Unknown')
+  assert.equal(response.score,50)
+  assert.equal(response.confidence,50)
+  assert.equal(response.fallback,false)
+})
+test('unsupported low-risk model claims trigger a deterministic brief', async () => {
+  const response = await run({...item, navUpdatedAt:new Date().toISOString()}, async () => ({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'This asset is low risk.',bull:'NAV available.',bear:'Unknown.',risk:'Lower',score:99,confidence:99,catalysts:[],risks:[]})}}]})}))
+  assert.equal(response.fallback,true)
+  assert.equal(response.risk,'Unknown')
+  assert.match(response.summary,/risk is not assessed/)
+})

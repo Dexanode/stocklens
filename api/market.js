@@ -1,4 +1,5 @@
 import { isBlockedCountry } from './lib/geo.js'
+import { dataQualityScore } from '../src/data-quality.js'
 
 const palette = [
   ['blue', '#2457ff'], ['cyan', '#00a9ba'], ['coral', '#ff6b52'],
@@ -18,44 +19,29 @@ function toneFor(symbol) {
   return palette[hash]
 }
 
-function scoreFor(token, price) {
-  const supplyValue = Number(token.total_supply || 0) * price
-  const hours = token.nav_price_updated_at ? Math.max(0, (Date.now() - Date.parse(token.nav_price_updated_at)) / 36e5) : Infinity
-  const freshness = Number.isFinite(hours) ? Math.max(0, 30 - hours * 2) : 0
-  const supply = Math.min(35, Math.log10(Math.max(1, supplyValue)) * 5)
-  const paused = Array.isArray(token.paused_features) && token.paused_features.length ? -25 : 0
-  return Math.max(0, Math.min(100, Math.round(35 + freshness + supply + paused)))
-}
-
-function riskFor(score) {
-  if (score >= 75) return 'Lower'
-  if (score >= 55) return 'Moderate'
-  if (score >= 35) return 'Elevated'
-  return 'High'
-}
-
 function normalize(token, index) {
   const symbol = String(token.symbol || '')
   const price = Number(token.nav_price)
   if (!symbol || !token.contract_address || !Number.isFinite(price) || price <= 0) return null
   const [tone, color] = toneFor(symbol)
-  const score = scoreFor(token, price)
   const rawChange = token.change_24h ?? token.nav_change_24h ?? token.price_change_24h
   const hasChange = rawChange !== null && rawChange !== undefined && String(rawChange).trim() !== '' && Number.isFinite(Number(rawChange))
   const change = hasChange ? `${Number(rawChange).toFixed(2)}%` : 'N/A'
   const updatedAt = token.nav_price_updated_at || null
+  const dataQuality = { nav: true, history: Array.isArray(token.nav_history) && token.nav_history.length >= 3, change: hasChange }
+  const score = dataQualityScore({ price, navUpdatedAt: updatedAt, dataQuality })
   return [symbol, {
     name: token.name || symbol, ticker: symbol, sector: 'Tokenized equity / B20',
-    price: `$${price.toFixed(2)}`, change, tone, risk: riskFor(score), score,
+    price: `$${price.toFixed(2)}`, change, tone, risk: 'Unknown', score,
     volume: Number.isFinite(Number(token.total_supply)) ? `${Number(token.total_supply).toLocaleString()} supply` : 'Supply unavailable',
     time: updatedAt ? new Date(updatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : 'NAV time unavailable',
-    bull: 'The asset has a live NAV reference and a verified B20 contract on Base mainnet.',
+    bull: 'A NAV reference and B20 contract address are available on Base mainnet.',
     bear: token.paused_features?.length ? 'The token reports paused features; treat the reference as constrained.' : 'NAV is a reference value, not a bid, ask, or guaranteed fill price.',
     color, points: '', candles: [], navHistory: Array.isArray(token.nav_history) ? token.nav_history : [],
     contractAddress: token.contract_address, chainId: 8453, dataSource: 'Coinbase Tokenized Stocks API',
     navUpdatedAt: updatedAt, totalSupply: token.total_supply ?? null, multiplier: token.multiplier ?? null,
     pausedFeatures: token.paused_features || [],
-    dataQuality: { nav: true, history: Array.isArray(token.nav_history) && token.nav_history.length > 1, change: hasChange }, index,
+    dataQuality, index,
   }]
 }
 

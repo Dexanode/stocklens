@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import handler from '../api/portfolio.js'
 
+let requestIndex = 0
 const universe = [{ symbol: 'AAPLc', price: '$100', score: 70, dataQuality: { nav: true } }]
 
 async function run(fetchImpl, input = { universe, holdings: [] }) {
@@ -15,7 +16,7 @@ async function run(fetchImpl, input = { universe, holdings: [] }) {
     json(body) { this.body = body; return this },
   }
   try {
-    await handler({ method: 'POST', headers: {}, body: input }, response)
+    await handler({ method: 'POST', headers: { 'x-forwarded-for': `test-${requestIndex++}` }, body: input }, response)
     return response
   } finally {
     globalThis.fetch = previousFetch
@@ -61,4 +62,21 @@ test('preserves all 13 holdings and validates the exact allocation sent to the U
     assert.equal(result.body.fallback, scenario !== 'valid', scenario)
     assert.equal(result.body.allocations.reduce((sum, row) => sum + row.targetPercent, 0), 100)
   }
+})
+
+test('portfolio confidence is capped by the available inputs of selected assets', async () => {
+  const result = await run(async (_url, options) => {
+    const prompt = JSON.parse(JSON.parse(options.body).messages[1].content)
+    assert.equal(prompt.universe[0].risk, 'Unknown')
+    assert.equal(prompt.universe[0].score, 25)
+    return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ summary: 'Data-limited plan', actions: [], allocations: [{symbol:'AAPLc',targetPercent:100,reason:'NAV available'}], confidence: 99 }) } }] }) }
+  })
+  assert.equal(result.body.fallback, false)
+  assert.equal(result.body.confidence, 25)
+})
+
+test('portfolio rejects unsupported risk claims', async () => {
+  const result = await run(async () => ({ok:true,json:async()=>({choices:[{message:{content:JSON.stringify({summary:'A low-risk allocation.',actions:[],allocations:[{symbol:'AAPLc',targetPercent:100}]})}}]})}))
+  assert.equal(result.body.fallback, true)
+  assert.equal(result.body.fallbackReason, 'unsupported_risk_claim')
 })
