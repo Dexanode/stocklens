@@ -10,9 +10,24 @@ import {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAccount, WagmiProvider } from "wagmi";
 import { baseSepolia } from "wagmi/chains";
+import "@fontsource/onest/400.css";
+import "@fontsource/onest/500.css";
+import "@fontsource/onest/600.css";
+import "@fontsource/onest/700.css";
+import "@fontsource/geist-mono/400.css";
+import "@fontsource/geist-mono/500.css";
+import "@fontsource/geist-mono/600.css";
+import "@fontsource/inter-tight/400.css";
+import "@fontsource/inter-tight/500.css";
+import "@fontsource/inter-tight/600.css";
+import "@fontsource/inter-tight/700.css";
+import "@fontsource/dm-mono/400.css";
+import "@fontsource/dm-mono/500.css";
 import "./index.css";
 import "./b20.css";
 import "./market-layout.css";
+import "./redesign.css";
+import NumberFlow from "@number-flow/react";
 import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
@@ -1361,7 +1376,7 @@ function App() {
                 Research / <b>Market overview</b>
           </div>
           <div className="top-actions">
-            <button className="theme-toggle demo-launch" onClick={startJudgeDemo} disabled={judgeRunning || portfolioAgentLoading}>{judgeRunning ? "Running demo…" : "Start demo"}</button>
+            <button className="theme-toggle demo-launch" onClick={startJudgeDemo} disabled={judgeRunning || portfolioAgentLoading}><i className="pulse-dot" aria-hidden="true" />{judgeRunning ? "Running demo…" : "Start demo"}</button>
             {judgeStep === 4 && <a href="#simulate">View plan</a>}
                 <span className="paper-badge">Paper only</span>
             <button className="theme-toggle" type="button" onClick={() => setTheme((current) => current === "dark" ? "light" : "dark")} aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}>
@@ -1504,6 +1519,8 @@ function App() {
                   {(chartType === "candles" ? chartCandles.length >= 2 : Boolean(chartPoints)) && chartYLabels.map((label, index) => <span key={index}>{label}</span>)}
                 </div>
                 <svg
+                  key={`${selected}-${chartType}-${range}-${chartPoints || chartCandles.length}`}
+                  className="chart-svg chart-draw"
                   viewBox="0 0 728 90"
                   preserveAspectRatio="none"
                   role="img"
@@ -1515,11 +1532,12 @@ function App() {
                     <>
                       <polyline
                         points={`${chartPoints.split(" ")[0].split(",")[0]},90 ${chartPoints} ${chartPoints.split(" ").at(-1).split(",")[0]},90`}
-                        fill={chartType === "area" ? "#edf2ff" : "none"}
+                        fill={chartType === "area" ? "var(--accent-wash)" : "none"}
                       />
                       <polyline
                         points={chartPoints}
                         fill="none"
+                        pathLength="1"
                         stroke={asset.color}
                         strokeWidth="2"
                         vectorEffect="non-scaling-stroke"
@@ -1679,7 +1697,7 @@ function App() {
               {portfolio.length > 0 && (
                 <div className="portfolio-mini">
                   <span>Local paper portfolio</span>
-                  <div className="portfolio-totals"><b>{formatUSD(portfolioMetrics.total)}</b><strong className={Math.abs(portfolioMetrics.pnl) < 0.005 ? "neutral-change" : portfolioMetrics.pnl >= 0 ? "up" : "down"}>{portfolioMetrics.pnl >= 0 ? "+" : ""}{formatUSD(portfolioMetrics.pnl)} P/L</strong></div>
+                  <div className="portfolio-totals"><b><NumberFlow value={portfolioMetrics.total} format={{ style: "currency", currency: "USD" }} /></b><strong className={Math.abs(portfolioMetrics.pnl) < 0.005 ? "neutral-change" : portfolioMetrics.pnl >= 0 ? "up" : "down"}>{Math.abs(portfolioMetrics.pnl) < 0.005 ? <NumberFlow value={0} format={{ style: "currency", currency: "USD" }} /> : <NumberFlow value={portfolioMetrics.pnl} format={{ style: "currency", currency: "USD", signDisplay: "always" }} />} P/L</strong></div>
                   {portfolioMetrics.rows.map((item) => (
                     <div key={item.symbol}>
                       <b>{item.symbol}</b>
@@ -1731,6 +1749,10 @@ function App() {
                             <div><span>Target value</span><strong>{formatUSD(item.targetValue)}</strong></div>
                             <div><span>Delta value</span><strong className={Math.abs(item.deltaValue) < 0.005 ? "neutral-change" : item.deltaValue >= 0 ? "up" : "down"}>{Math.abs(item.deltaValue) < 0.005 ? "—" : `${item.deltaValue >= 0 ? "+" : "-"}${formatUSD(Math.abs(item.deltaValue))}`}</strong></div>
                             <div><span>Action</span><strong className={`rebalance-action ${item.action.toLowerCase()}`}>{item.action}</strong></div>
+                          </div>
+                          <div className="rebalance-bars" aria-hidden="true">
+                            <span className="rebalance-bar current" style={{ width: `${Math.min(100, item.currentPercent)}%` }} />
+                            <span className="rebalance-bar target" style={{ width: `${Math.min(100, item.targetPercent)}%` }} />
                           </div>
                         </div>
                       ))}
