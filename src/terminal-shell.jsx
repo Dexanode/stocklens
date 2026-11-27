@@ -65,6 +65,13 @@ export function TerminalShell({ ui }) {
   );
 }
 
+function BrandMark({ size }) {
+  return <span className="sl-brand-icon" style={{ width: size, height: size }} aria-hidden="true">
+    <img className="brand-logo brand-logo-light" src="/brand-icon-light.svg" alt="" />
+    <img className="brand-logo brand-logo-dark" src="/brand-icon-dark.svg" alt="" />
+  </span>;
+}
+
 function ShellInner({ ui }) {
   const reduce = useReducedMotion();
   const [distance, setDistance] = useState(10);
@@ -112,7 +119,7 @@ function ShellInner({ ui }) {
         <div className="main-column" id="top">
           <header className="topbar">
             <a className="sl-brand" href="#top" onClick={(event) => { event.preventDefault(); go("markets"); }}>
-              <LensMark size={30} />
+              <BrandMark size={30} />
               StockLens
             </a>
             <nav className="sl-nav d-only" aria-label="Sections">
@@ -152,7 +159,7 @@ function Gate({ ui, item }) {
       <div className="welcome-layout gate">
         <section className="gate-l">
           <div>
-            <motion.div className="sl-brand" initial="hidden" animate="show" variants={item}><LensMark size={32} /> StockLens <small>/ research terminal</small></motion.div>
+            <motion.div className="sl-brand" initial="hidden" animate="show" variants={item}><BrandMark size={32} /> StockLens <small>/ research terminal</small></motion.div>
             <motion.h1 initial="hidden" animate="show" variants={item} id="welcome-title">From market data<br /><span>to a testable thesis.</span></motion.h1>
             <motion.p className="promise" initial="hidden" animate="show" variants={item}>Explore B20 reference NAVs, challenge an AI research brief, and build a paper portfolio. Record a thesis on Base Sepolia if you choose.</motion.p>
             <motion.div className="steps" initial="hidden" animate="show" variants={item} aria-label="How StockLens works">
