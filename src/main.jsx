@@ -33,6 +33,18 @@ const wagmiConfig = getDefaultConfig({
 });
 const queryClient = new QueryClient();
 
+// Explicit mapping avoids presenting an unrelated company's logo for new B20 symbols.
+const logoTickers = new Set(["AAPL", "AMZN", "GOOGL", "INTC", "META", "MSFT", "MSTR", "NVDA", "TSLA", "COIN", "HOOD"]);
+function AssetIcon({ symbol }) {
+  const [failed, setFailed] = useState(false);
+  const ticker = symbol.endsWith("c") ? symbol.slice(0, -1) : "";
+  useEffect(() => setFailed(false), [symbol]);
+  const showLogo = logoTickers.has(ticker) && !failed;
+  return <span className="asset-icon" aria-hidden="true">
+    {showLogo ? <img src={`https://cdn.jsdelivr.net/gh/nvstly/icons@main/ticker_icons/${ticker}.png`} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setFailed(true)} /> : symbol.slice(0, 1)}
+  </span>;
+}
+
 const assets = {
   AAPLc: {
     name: "Apple",
@@ -1396,9 +1408,7 @@ function App() {
                     className={`asset-row ${symbol === selected ? "active" : ""}`}
                     onClick={() => pick(symbol)}
                   >
-                    <span className={`asset-icon ${item.tone}`}>
-                      {symbol.slice(0, 1)}
-                    </span>
+                    <AssetIcon symbol={symbol} />
                     <span className="asset-name">
                       <b>{symbol}</b>
                       <small>
@@ -1748,9 +1758,7 @@ function App() {
                 <b>{wallet ? "PAPER BASE SEPOLIA / 84532" : "PAPER ONLY / NO WALLET REQUIRED"}</b>
               </div>
               <div className="selected-token">
-                <span className={`asset-icon ${asset.tone}`}>
-                  {selected.slice(0, 1)}
-                </span>
+                <AssetIcon symbol={selected} />
                 <div>
                   <b>{selected}</b>
                   <small>
