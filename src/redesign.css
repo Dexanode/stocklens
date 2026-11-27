@@ -1014,6 +1014,7 @@ html[data-theme="dark"] .book-table tr.flash td { animation-name: book-flash-dar
 }
 
 .screen-block { display: flex; flex-direction: column; gap: 20px; }
+#simulate.screen-block { width: min(100%, 820px); margin-inline: auto; }
 .sl-app .history-heading h2,
 .sl-app .lab-grid h2,
 .sl-app .overview-heading h1 {
