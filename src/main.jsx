@@ -466,6 +466,7 @@ function App() {
   });
   const { address, connector, chainId } = useAccount();
   const asset = marketAssets[selected];
+  const assetNavStatus = navFreshness(asset, marketClock);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try { window.localStorage.setItem("stocklens-theme", theme); } catch { /* theme persistence is optional */ }
@@ -523,7 +524,8 @@ function App() {
     const bottom = low - padding;
     return [0, 1, 2, 3].map((index) => formatUSD(top - ((top - bottom) * index) / 3));
   }, [asset.navHistory, asset.price, range]);
-  const insight = riskInsights[selected] || {
+  const matchingInsight = riskInsights[selected]?.navStatus === assetNavStatus ? riskInsights[selected] : null;
+  const insight = matchingInsight || {
     confidence: 35,
     score: asset.score,
     risk: asset.risk,
@@ -541,7 +543,7 @@ function App() {
   };
   const displayedScore = Number.isFinite(Number(insight.score)) ? Number(insight.score) : Number(asset.score || 0);
   const displayedRisk = insight.risk || asset.risk || "Unknown";
-  const modelLabel = riskLoading ? "MODEL / THINKING…" : riskInsights[selected] ? (insight.fallback ? "MODEL / FALLBACK" : "MODEL / V I K E Y") : "MODEL / BASELINE";
+  const modelLabel = riskLoading ? "MODEL / THINKING…" : matchingInsight ? (insight.fallback ? "MODEL / FALLBACK" : "MODEL / V I K E Y") : "MODEL / BASELINE";
   const scoreBasis = insight.scoreBasis ? `fresh ${insight.scoreBasis.freshness} · supply ${insight.scoreBasis.supply} · history ${insight.scoreBasis.history} · change ${insight.scoreBasis.change}` : "live NAV quality and model context";
   const allocation = useMemo(() => {
     const price = Number(String(asset.price).replace(/[$,]/g, ""));
@@ -707,7 +709,7 @@ function App() {
       })
       .finally(() => { if (active) setRiskLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [selected, asset.navUpdatedAt, asset.price]);
+  }, [selected, asset.navUpdatedAt, asset.price, assetNavStatus]);
 
   useEffect(() => {
     setAiDetailsOpen(false);
@@ -1567,7 +1569,7 @@ function App() {
                   <span>AI brief</span> / {selected}
                 </span>
                 <span className="model-tag">
-                  {`${modelLabel}${riskInsights[selected]?.confidence != null ? ` · CONF ${riskInsights[selected].confidence}/100` : ""}`}
+                  {`${modelLabel}${matchingInsight?.confidence != null ? ` · CONF ${matchingInsight.confidence}/100` : ""}`}
                 </span>
               </div>
               <div className="score-row">
@@ -1586,7 +1588,7 @@ function App() {
                   <h3>
                     {displayedRisk} <span>risk</span>
                   </h3>
-                  <p>{riskBriefs[selected]}</p>
+                  <p>{riskLoading || !matchingInsight ? (assetNavStatus === "delayed" ? "NAV is delayed; refreshing research context." : assetNavStatus === "unknown" ? "NAV timestamp is unavailable; refreshing research context." : assetNavStatus === "unavailable" ? "NAV is unavailable; refreshing research context." : "Updating research context…") : riskBriefs[selected]}</p>
                 </div>
               </div>
               <button
