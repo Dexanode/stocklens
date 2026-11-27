@@ -1,5 +1,6 @@
 import { isBlockedCountry } from './lib/geo.js'
 import { checkRateLimit } from './lib/rate-limit.js'
+import { navFreshness } from '../src/market-freshness.js'
 
 // Best-effort per-IP limit (in-memory, per serverless instance — see
 // api/lib/rate-limit.js). 30 req/min/IP keeps normal research use working
@@ -38,20 +39,22 @@ function fallbackRisk(asset, reason = 'Vikey unavailable') {
   const score = Math.round(clamp(35 + freshness + supplySignal + history + change + paused, 0, 100))
   const risk = score >= 75 ? 'Lower' : score >= 55 ? 'Moderate' : score >= 35 ? 'Elevated' : 'High'
   const confidence = Math.round(clamp(25 + (asset.dataQuality?.nav !== false ? 25 : 0) + (history ? 20 : 0) + (change ? 10 : 0) + (paused ? 0 : 10), 20, 90))
+  const navStatus = navFreshness(asset)
+  const navDescription = { current: 'The NAV source timestamp is within the last hour.', delayed: 'The NAV source timestamp is over one hour old; the reference is delayed.', unknown: 'The NAV source timestamp is unavailable or invalid.', unavailable: 'No usable NAV reference is available.' }[navStatus]
   const missing = [
     asset.dataQuality?.history === false ? 'NAV history' : '',
     asset.dataQuality?.change === false ? 'price change' : '',
     paused ? 'paused features' : '',
   ].filter(Boolean)
   return {
-    summary: compact(`${asset.symbol} receives a ${score}/100 ${risk.toLowerCase()}-risk signal from live NAV quality, freshness, supply and token status. ${missing.length ? `Missing ${missing.join(' and ')} limits trend confidence.` : 'The available reference fields are internally consistent.'}`, 300),
-    bull: asset.dataQuality?.nav !== false ? 'The asset has a live NAV reference and a verified B20 contract on Base mainnet.' : 'Contract identity remains available, but live NAV is not confirmed.',
+    summary: compact(`${asset.symbol} receives a ${score}/100 ${risk.toLowerCase()}-risk signal from NAV quality, freshness, supply and token status. ${navDescription} ${missing.length ? `Missing ${missing.join(' and ')} limits trend confidence.` : 'The available reference fields are internally consistent.'}`, 300),
+    bull: navStatus === 'current' ? 'The source supplied a recent NAV reference for this asset.' : navDescription,
     bear: 'NAV is a reference value, not a bid, ask, or guaranteed fill price.',
     risk,
     score,
     confidence,
     catalysts: [
-      freshness > 0 ? `NAV print is fresh within the model freshness window (${Math.round(hours * 10) / 10}h old).` : 'A new NAV print would improve signal quality.',
+      navStatus === 'current' ? `NAV source timestamp is ${Math.round(hours * 10) / 10}h old.` : 'A recent NAV print would improve signal quality.',
       history ? 'Persistent NAV history is available for trend comparison.' : 'A second NAV observation would improve trend analysis.',
     ].map((item) => compact(item, 120)),
     risks: [
@@ -59,6 +62,7 @@ function fallbackRisk(asset, reason = 'Vikey unavailable') {
       paused ? 'The token reports paused features; treat the reference as constrained.' : 'Model output can lag sudden market changes.',
     ].map((item) => compact(item, 120)),
     portfolioRationale: compact('Keep sizing proportional to data confidence; this is a paper-only research signal, not an execution recommendation.', 240),
+    navStatus,
     source: 'StockLens deterministic risk model',
     fallback: true,
     method: 'NAV freshness + supply + history/change availability + paused-feature penalty',
@@ -105,11 +109,14 @@ export default async function handler(request, response) {
       score: Number.isFinite(Number(asset.score)) ? Number(asset.score) : 50,
       volume: String(asset.volume || 'Unavailable').slice(0, 32),
       navUpdatedAt: String(asset.navUpdatedAt || '').slice(0, 40),
+      navStatus: navFreshness(asset),
       totalSupply: Number.isFinite(Number(asset.totalSupply)) ? Number(asset.totalSupply) : null,
       multiplier: Number.isFinite(Number(asset.multiplier)) ? Number(asset.multiplier) : null,
       pausedFeatures: Array.isArray(asset.pausedFeatures) ? asset.pausedFeatures.slice(0, 6) : [],
       dataQuality: asset.dataQuality || {},
     }
+    const navStatus = navFreshness(compactAsset)
+    if (navStatus !== 'current') return response.status(200).json(fallbackRisk(compactAsset, `NAV ${navStatus}: using a deterministic brief until the source timestamp is current`))
     if (!process.env.VIKEY_API_KEY) return response.status(200).json(fallbackRisk(compactAsset, 'VIKEY_API_KEY is not configured'))
     const upstream = await fetch('https://api-plan.vikey.ai/v1/chat/completions', {
       method: 'POST',
@@ -119,7 +126,7 @@ export default async function handler(request, response) {
         max_tokens: 2400,
         temperature: 0.2,
         response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Lower, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied B20 NAV, supply, multiplier, pause, freshness and data-quality fields. If history or change is unavailable, say so explicitly and lower confidence. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(compactAsset) }],
+        messages: [{ role: 'system', content: 'You are StockLens Research AI. Return only valid JSON with exactly these keys: summary (string), bull (string), bear (string), risk (one of Lower, Moderate, Elevated, High), score (integer 0-100), confidence (integer 0-100), catalysts (array of 2 concise strings), risks (array of 2 concise strings), portfolioRationale (string). Ground the brief only in the supplied B20 NAV, supply, multiplier, pause, freshness and data-quality fields. The NAV status and timestamp are supplied explicitly; never call delayed or unknown data current. If history or change is unavailable, say so explicitly and lower confidence. Never invent news, fundamentals, ownership, or live events. This is educational research, not financial advice.' }, { role: 'user', content: JSON.stringify(compactAsset) }],
       }),
       // Bound the upstream call so a slow Vikey cannot hang the function
       // into a Vercel timeout (audit C-2). 15s: the single-asset brief is
@@ -156,6 +163,7 @@ export default async function handler(request, response) {
       risk: normalizedRisk,
       score: normalizedScore,
       confidence: normalizedConfidence,
+      navStatus,
       source: 'Vikey Research AI',
       fallback: false,
     }
