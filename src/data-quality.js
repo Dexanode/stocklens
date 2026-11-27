@@ -8,3 +8,10 @@ export function dataQualityScore(asset, now = Date.now()) {
   const hasChange = asset?.dataQuality?.change === true
   return (available ? 25 : 0) + (status === 'current' ? 25 : 0) + (hasHistory ? 25 : 0) + (hasChange ? 25 : 0)
 }
+
+// Preserve the most complete loaded history during a market-only refresh.
+export function retainLoadedHistory(current, incoming) {
+  const oldRows = Array.isArray(current) ? current : []
+  const newRows = Array.isArray(incoming) ? incoming : []
+  return oldRows.length > newRows.length ? oldRows : newRows
+}

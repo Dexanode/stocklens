@@ -16,7 +16,7 @@ import "./market-layout.css";
 import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
 import { navFreshness } from "./market-freshness.js";
-import { dataQualityScore } from "./data-quality.js";
+import { dataQualityScore, retainLoadedHistory } from "./data-quality.js";
 import { proofChangeBps, displayProofChange } from "./proof-change.js";
 import { paperPosition, paperPlanIsValid } from "./paper-validation.js";
 
@@ -634,7 +634,7 @@ function App() {
             return [symbol, { ...item, navHistory: history }];
           }));
           try { window.localStorage.setItem("stocklens-nav-history-v1", JSON.stringify(stored)); } catch { /* snapshot storage is optional */ }
-          setMarketAssets((current) => ({ ...current, ...nextData }));
+          setMarketAssets((current) => ({ ...current, ...Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { ...item, navHistory: retainLoadedHistory(current[symbol]?.navHistory, item.navHistory) }])) }));
           if (now - lastHistoryRequest >= 15 * 60e3 && payload.source !== "Base B20 registry fallback") {
             lastHistoryRequest = now;
             fetch("/api/nav-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshots: Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { price: Number(String(item.price).replace(/[$,]/g, "")) }])) }) })

@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { dataQualityScore } from '../src/data-quality.js'
+import { dataQualityScore, retainLoadedHistory } from '../src/data-quality.js'
 const now = Date.parse('2026-11-27T12:00:00Z')
 test('availability score reflects source freshness and missing fields, not supply or risk', () => {
   const base = {price:'$100', navUpdatedAt:'2026-11-27T10:00:00Z', dataQuality:{nav:true,history:false,change:false}}
@@ -9,4 +9,10 @@ test('availability score reflects source freshness and missing fields, not suppl
   assert.equal(dataQualityScore({...base,navUpdatedAt:'2026-11-27T11:30:00Z'},now),50)
   assert.equal(dataQualityScore({...base,navHistory:[{price:1},{price:2},{price:3}]},now),50)
   assert.equal(dataQualityScore({...base,price:'—',dataQuality:{nav:false}},now),0)
+})
+
+test('market refresh does not replace loaded history with a shorter local cache', () => {
+  const server = [{ price: 1 }, { price: 2 }, { price: 3 }]
+  assert.deepEqual(retainLoadedHistory(server, [{ price: 3 }]), server)
+  assert.deepEqual(retainLoadedHistory([], server), server)
 })
