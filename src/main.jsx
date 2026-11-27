@@ -15,6 +15,8 @@ import "./b20.css";
 import "./market-layout.css";
 import { resolveShareId } from "./thesis-share.js";
 import { guardedWalletProvider, walletIsOnBaseSepolia } from "./wallet-network.js";
+import { navFreshness } from "./market-freshness.js";
+import { proofChangeBps, displayProofChange } from "./proof-change.js";
 
 const walletConnectProjectId = String(import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "").trim();
 const wagmiConfig = getDefaultConfig({
@@ -425,6 +427,7 @@ function App() {
   const [riskBriefs, setRiskBriefs] = useState(briefs);
   const [riskInsights, setRiskInsights] = useState({});
   const [dataMode, setDataMode] = useState("DEMO DATA");
+  const [marketClock, setMarketClock] = useState(Date.now());
   const [riskLoading, setRiskLoading] = useState(false);
   const [aiDetailsOpen, setAiDetailsOpen] = useState(false);
   const [portfolioPlan, setPortfolioPlan] = useState(null);
@@ -598,13 +601,21 @@ function App() {
   }, [address]);
 
   useEffect(() => {
-    fetch("/api/market")
+    let active = true;
+    let inFlight = false;
+    let lastHistoryRequest = 0;
+    function refreshMarket() {
+      if (inFlight || document.hidden) return;
+      inFlight = true;
+      setMarketClock(Date.now());
+      fetch("/api/market", { cache: "no-store" })
       .then((result) =>
         result.ok
           ? result.json()
           : Promise.reject(new Error("market_unavailable")),
       )
       .then((payload) => {
+        if (!active) return;
         if (Object.keys(payload.data || {}).length) {
           const now = Date.now();
           let stored = {};
@@ -618,17 +629,27 @@ function App() {
           }));
           try { window.localStorage.setItem("stocklens-nav-history-v1", JSON.stringify(stored)); } catch { /* snapshot storage is optional */ }
           setMarketAssets((current) => ({ ...current, ...nextData }));
-          fetch("/api/nav-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshots: Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { price: Number(String(item.price).replace(/[$,]/g, "")) }])) }) })
+          if (now - lastHistoryRequest >= 15 * 60e3 && payload.source !== "Base B20 registry fallback") {
+            lastHistoryRequest = now;
+            fetch("/api/nav-history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ snapshots: Object.fromEntries(Object.entries(nextData).map(([symbol, item]) => [symbol, { price: Number(String(item.price).replace(/[$,]/g, "")) }])) }) })
             .then((result) => result.json())
             .then((historyPayload) => {
-              if (!historyPayload.persistent || !historyPayload.history) return;
+              if (!active || !historyPayload.persistent || !historyPayload.history) return;
               setMarketAssets((current) => Object.fromEntries(Object.entries(current).map(([symbol, item]) => [symbol, { ...item, navHistory: historyPayload.history[symbol] || item.navHistory || [] }] )));
             })
             .catch(() => {});
-          setDataMode("B20 MAINNET");
+          }
+          setDataMode(payload.source === "Base B20 registry fallback" ? "NAV UNAVAILABLE" : "B20 MAINNET");
         }
       })
-      .catch(() => setDataMode("DEMO DATA"));
+      .catch(() => { if (active) setDataMode("MARKET UPDATE FAILED"); })
+      .finally(() => { inFlight = false; });
+    }
+    refreshMarket();
+    const timer = window.setInterval(refreshMarket, 60e3);
+    const onVisibility = () => { if (!document.hidden) refreshMarket(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => { active = false; window.clearInterval(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, []);
 
   useEffect(() => {
@@ -837,8 +858,7 @@ function App() {
         return;
       }
       const priceCents = Math.round(priceValue * 100);
-      const changeValue = Number.parseFloat(asset.change.replace("%", ""));
-      const changeBps = Number.isFinite(changeValue) ? Math.round(changeValue * 100) : 0;
+      const changeBps = proofChangeBps(asset.change);
       const transaction = await registry.recordThesis(
         selected,
         priceCents,
@@ -1355,8 +1375,8 @@ function App() {
                       <small>
                         {item.name} / {item.sector}
                       </small>
-                      <span className={`market-badge ${hasNav(item) ? "live" : "pending"}`}>{hasNav(item) ? "NAV LIVE" : "NAV UNAVAILABLE"}</span>
-                      {hasNav(item) && <span className={`market-badge ${hasHistory(item) ? "live" : "pending"}`}>{hasHistory(item) ? "HISTORY LIVE" : "HISTORY PENDING"}</span>}
+                      <span className={`market-badge ${navFreshness(item, marketClock) === "current" ? "live" : "pending"}`}>{({ current: "NAV CURRENT", delayed: "NAV DELAYED", unknown: "NAV TIME UNKNOWN", unavailable: "NAV UNAVAILABLE" })[navFreshness(item, marketClock)]}</span>
+                      {hasNav(item) && <span className={`market-badge ${hasHistory(item) ? "live" : "pending"}`}>{hasHistory(item) ? "HISTORY AVAILABLE" : "HISTORY PENDING"}</span>}
                     </span>
                     <span className="asset-price">
                       <b>{item.price}</b>
@@ -1372,8 +1392,9 @@ function App() {
               </div>
               <div className="panel-foot">
                 <span>Curated universe</span>
-                <span>Updated {asset.time}</span>
+                <span>NAV time {asset.navUpdatedAt ? new Date(asset.navUpdatedAt).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : "unavailable"}</span>
               </div>
+              <div className="panel-foot"><span>{dataMode === "MARKET UPDATE FAILED" || dataMode === "NAV UNAVAILABLE" ? "Market refresh unavailable" : "Refreshes every minute while open"}</span><span>NAV delayed after 1 hour</span></div>
             </div>
             <div className="chart-panel panel">
               <a className="switch-asset" href="#asset-search" onClick={() => document.querySelector(".market-search input")?.focus()}>Search assets ↓</a>
@@ -1903,9 +1924,8 @@ function App() {
                       </span>
                       <span>
                         <small>CHANGE</small>
-                        <b className={item.change >= 0 ? "up" : "down"}>
-                          {item.change >= 0 ? "+" : ""}
-                          {item.change.toFixed(2)}%
+                        <b className={item.change === null || item.change === 0 ? "neutral-change" : item.change > 0 ? "up" : "down"}>
+                          {displayProofChange(item.change)}
                         </b>
                       </span>
                       <span>
