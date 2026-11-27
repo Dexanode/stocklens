@@ -222,6 +222,7 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
         <div>
           <h1 className="page-title">Market overview<span className="muted">{count ? `, ${count} B20 stocks on Base.` : ""}</span></h1>
           <p className="lede">{ui.dataMode === "B20 MAINNET" ? "NAV reference from the Coinbase Tokenized Stocks API · Base mainnet 8453" : "Waiting for a live NAV reference · Base mainnet 8453. Nothing is shown until it arrives."}</p>
+          <p className="journey-hint">Choose an asset → review the brief → simulate a position → save a thesis</p>
           <div className="phead-actions">
             <button className="btn ghost demo-launch" type="button" onClick={ui.startJudgeDemo} disabled={ui.judgeRunning || ui.portfolioAgentLoading}>
               <i className="pulse-dot" aria-hidden="true" />{ui.judgeRunning ? "Running demo…" : "Start demo"}
@@ -267,7 +268,7 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
         <div className="lower a-low d-only">
           <motion.section className="card" initial="hidden" animate="show" variants={item}>
             <div className="card-h"><h2>Paper book</h2><button className="btn ghost" type="button" style={{ height: 36 }} onClick={() => go("agent")}>Open agent</button></div>
-            {ui.portfolioMetrics.rows.length === 0 ? <p className="lede" style={{ padding: "0 20px 16px" }}>No paper positions yet.</p> : ui.portfolioMetrics.rows.map((row) => (
+            {ui.portfolioMetrics.rows.length === 0 ? <div className="empty-book"><p className="lede">No paper positions yet. Try a simulated position to start your book.</p><button className="btn ghost" type="button" onClick={() => go("paper")}>Open Paper Lab</button></div> : ui.portfolioMetrics.rows.map((row) => (
               <div key={row.symbol} className="book-row">
                 <Icon symbol={row.symbol} />
                 <span><b>{row.symbol}</b> <span className="muted">· {ui.portfolioMetrics.total ? `${((row.currentValue / ui.portfolioMetrics.total) * 100).toFixed(0)}%` : "—"}</span></span>
@@ -302,6 +303,7 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
                   <button className="btn ghost" type="button" aria-expanded={ui.aiDetailsOpen} onClick={() => ui.setAiDetailsOpen((open) => !open)}>{ui.aiDetailsOpen ? "Hide details" : "Challenge brief"}</button>
                 </div>
                 <p className="model-line">{String(ui.modelLabel || "").replace("MODEL / ", "Model · ").replace("V I K E Y", "Vikey")}{ui.insight?.confidence != null ? ` · confidence ${ui.insight.confidence}/100` : ""}</p>
+                {ui.matchingInsight && ui.insight?.fallback && <p className="fallback-note">Using a rules-based brief while AI research is unavailable or data is insufficient.</p>}
                 {ui.aiDetailsOpen && (
                   <div className="ai-details">
                     <div className="case"><i /><div>Catalysts<div className="b">{(ui.insight?.catalysts || []).join(" · ") || "No catalyst data"}</div></div></div>
@@ -675,6 +677,7 @@ function PaperScreen({ ui, item, Icon, Wallet }) {
 }
 
 function ThesisScreen({ ui, item }) {
+  const [showAllHistory, setShowAllHistory] = useState(false);
   const asset = ui.asset || {};
   return (
     <div className="screen-block theses-screen">
@@ -686,6 +689,9 @@ function ThesisScreen({ ui, item }) {
         <span className="workspace-count">{ui.thesisWorkspace.length} saved</span>
       </motion.div>
       {ui.notice && <p className="trade-notice" role="status">{ui.notice}</p>}
+      <nav className="theses-jumps" aria-label="Theses sections">
+        {[ ["thesis-workspace", "New thesis"], ["active-research", "Active research"], ["thesis-activity", "Activity"], ["history", "Onchain record"] ].map(([id, label]) => <button key={id} type="button" onClick={() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" })}>{label}</button>)}
+      </nav>
       <div className="lower">
         <motion.section id="thesis-workspace" className="card thesis-composer" initial="hidden" animate="show" variants={item}>
           <div className="card-h"><h2>New thesis</h2><b>{ui.selected} · {asset.price}</b></div>
@@ -708,7 +714,7 @@ function ThesisScreen({ ui, item }) {
           <button className="workspace-save" type="button" onClick={ui.saveThesis}>Save thesis</button>
           <small className="workspace-note">Saved in this browser and, when the server accepts it, on the thesis store. No order or custody.</small>
         </motion.section>
-        <motion.section className="card thesis-list-panel" initial="hidden" animate="show" variants={item}>
+        <motion.section id="active-research" className="card thesis-list-panel" initial="hidden" animate="show" variants={item}>
           <div className="card-h"><h2>Active research</h2></div>
           {ui.thesisWorkspace.length === 0 ? <p className="lede" style={{ padding: "0 20px 16px" }}>No thesis saved yet.</p> : ui.thesisWorkspace.map((row) => {
             const outcome = ui.thesisOutcome(row);
@@ -757,10 +763,10 @@ function ThesisScreen({ ui, item }) {
       </div>
       <motion.section id="history" className="card history-panel" initial="hidden" animate="show" variants={item}>
         <div className="card-h"><h2>Onchain record</h2><a href={`https://sepolia.basescan.org/address/${ui.registry}#readContract`} target="_blank" rel="noreferrer">Open contract</a></div>
-        <p className="lede" style={{ padding: "0 20px" }}>Research proofs read through the StockLens history proxy on Base Sepolia. Recorded scores use a legacy heuristic.</p>
+        <p className="lede" style={{ padding: "0 20px" }}>Recent research proofs are read from Base Sepolia. Recorded scores use a legacy heuristic and are not validated asset-risk ratings.</p>
         {ui.historyLoading ? <p className="lede" style={{ padding: 20 }}>Reading Base Sepolia…</p> : ui.historyError ? <p className="lede" style={{ padding: 20 }}>{ui.historyError}</p> : ui.thesisHistory.length === 0 ? <p className="lede" style={{ padding: 20 }}>No thesis recorded yet.</p> : (
           <div className="history-list">
-            {ui.thesisHistory.map((row) => (
+            {(showAllHistory ? ui.thesisHistory : ui.thesisHistory.slice(0, 3)).map((row) => (
               <a key={row.id} className="history-row" href={`https://sepolia.basescan.org/address/${ui.registry}#events`} target="_blank" rel="noreferrer">
                 <span className="history-id">#{row.id}</span>
                 <span className="history-symbol"><b>{row.symbol}</b><small>{new Date(row.timestamp).toLocaleString("en-US", { day: "2-digit", month: "short", year: "numeric" })}</small></span>
@@ -770,6 +776,7 @@ function ThesisScreen({ ui, item }) {
                 <span className="history-wallet"><small>Researcher</small><b className="mono">{shortAddr(row.researcher)}</b></span>
               </a>
             ))}
+            {ui.thesisHistory.length > 3 && <button className="btn ghost history-toggle" type="button" aria-expanded={showAllHistory} onClick={() => setShowAllHistory((shown) => !shown)}>{showAllHistory ? "Show fewer records" : `Show all ${ui.thesisHistory.length} loaded records`}</button>}
           </div>
         )}
       </motion.section>
