@@ -1359,3 +1359,14 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
     grid-template-areas: "hero" "wl" "side" "low";
   }
 }
+
+@media (min-width: 761px) {
+  .sl-sidebar { transition: width 280ms cubic-bezier(.22, 1, .36, 1), padding 280ms cubic-bezier(.22, 1, .36, 1); }
+  .sl-app .main-column { transition: margin-left 280ms cubic-bezier(.22, 1, .36, 1); }
+  .sl-sidebar-nav { transition: margin-top 280ms cubic-bezier(.22, 1, .36, 1); }
+  .sl-sidebar-toggle svg { transition: transform 280ms cubic-bezier(.22, 1, .36, 1); }
+  .sidebar-collapsed .sl-sidebar-toggle svg { transform: rotate(180deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sl-app .sl-sidebar, .sl-app .main-column, .sl-app .sl-sidebar-nav, .sl-app .sl-sidebar-toggle svg { transition: none !important; }
+}

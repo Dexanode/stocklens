@@ -90,7 +90,7 @@ function Sidebar({ active, go, collapsed, onToggle }) {
       <img src="/brand-icon-dark.svg?v=animated1" alt="" /><span>StockLens</span>
     </button>
     <button className="sl-sidebar-toggle" type="button" onClick={onToggle} aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"} aria-expanded={!collapsed} aria-controls="sidebar-sections" title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={collapsed ? "m9 5 7 7-7 7" : "m15 5-7 7 7 7"} /></svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
     </button>
     <div className="sl-sidebar-caption">RESEARCH WORKSPACE</div>
     <nav id="sidebar-sections" className="sl-sidebar-nav" aria-label="Sections">
