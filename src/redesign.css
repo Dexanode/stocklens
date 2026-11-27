@@ -557,6 +557,8 @@ html[data-theme="dark"] .wl-active { box-shadow: inset 0 0 0 1px #5c4d86; }
   border-radius: 5px;
   box-shadow: 0 0 0 1px rgba(23, 23, 23, 0.22);
 }
+.sl-app .asset-icon[data-symbol="AAPLc"] img,
+.sl-app .asset-icon[data-symbol="INTCc"] img { background: #171717; }
 .sl-app .asset-name b,
 .sl-app .asset-price b {
   color: var(--ink) !important;
@@ -1233,4 +1235,11 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
   }
   .pulse::after { display: none !important; }
   .rebalance-bar { transition: none !important; }
+}
+
+@media (max-width: 440px) {
+  .sl-app .sl-brand { font-size: 0; gap: 0; flex: 0 0 auto; }
+  .sl-app .top-actions { flex: 1 1 auto; }
+  .sl-app .wallet-button { min-width: 0; flex: 0 1 auto; }
+  .sl-app .chart-slot { margin-top: 16px; }
 }
