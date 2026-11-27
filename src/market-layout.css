@@ -1,4 +1,11 @@
 .research-grid .watchlist-panel h2 {font-size:1.4rem;letter-spacing:-.025em}
+.asset-icon img {display:block;width:22px;height:22px;object-fit:contain}
+.research-journey,.research-next {display:flex;flex-wrap:wrap;align-items:center;gap:10px 20px;padding:14px 0;border-bottom:1px solid #d6deea;font:11px 'DM Mono',monospace}
+.research-journey span,.research-next span {color:#8290a5}
+.research-journey a,.research-next a {color:#2457ff}
+.research-journey a:hover,.research-next a:hover {text-decoration:underline}
+html[data-theme="dark"] .research-journey,html[data-theme="dark"] .research-next {border-color:#293a57}
+html[data-theme="dark"] .research-journey a,html[data-theme="dark"] .research-next a {color:#91adff}
 .research-grid .watchlist-panel {min-width:0}
 .research-grid .watchlist-panel .panel-head {display:grid;grid-template-columns:minmax(0,1fr);gap:.75rem}
 .research-grid .watchlist-tools {display:flex;flex-wrap:wrap;align-items:center;gap:.5rem .75rem;min-width:0}
