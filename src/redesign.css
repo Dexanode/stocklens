@@ -1378,3 +1378,43 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
 .thinking-orb-inner { animation-delay: -.9s; }
 @keyframes thinking-breathe { 0%, 100% { transform: scale(.82); opacity: .55; } 50% { transform: scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .thinking-orb-outer, .thinking-orb-inner { animation: none !important; } }
+
+/* Welcome and research: editorial hierarchy within the existing StockLens theme. */
+.welcome-eyebrow {
+  display: inline-flex; align-items: center; gap: 9px; margin-top: clamp(48px, 7vh, 84px);
+  color: var(--lav-ink); font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase;
+}
+.welcome-eyebrow span { width: 8px; height: 8px; border-radius: 50%; background: var(--lav); }
+.gate-l h1 { margin-top: 18px !important; max-width: 720px; font-size: clamp(48px, 5vw, 72px) !important; }
+.gate-l h1 span { color: var(--lav); }
+.gate-l .promise { max-width: 560px; line-height: 1.6; }
+.steps { gap: 0; margin-top: 42px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.step, html[data-theme="dark"] .step { padding: 19px 18px 19px 0; border: 0; border-radius: 0; background: transparent; }
+.step + .step { padding-left: 18px; border-left: 1px solid var(--line); }
+.step em { font-family: var(--f-mono); font-size: 11px; }
+.step b { margin-top: 10px; }
+.step span { display: block; line-height: 1.4; }
+.gate-pills { margin-top: 38px; }
+.gcard { border: 1px solid var(--line) !important; box-shadow: var(--sh-2); }
+.brief { border-top: 3px solid var(--lav) !important; }
+.brief-h { align-items: flex-start; }
+.brief-kicker, .brief-summary > span { display: block; color: var(--lav); font: 600 10px var(--f-mono); letter-spacing: .08em; }
+.brief-h h2 { margin-top: 6px !important; }
+.brief-summary { margin: 18px 0 8px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); }
+.brief .brief-summary .lead { margin: 9px 0 0; line-height: 1.5; }
+.brief .lead mark, html[data-theme="dark"] .brief .lead mark { background: none; color: var(--lav-ink); font-weight: 650; }
+.brief .case { padding: 14px 0; line-height: 1.4; }
+.brief .case .b { margin-top: 4px; line-height: 1.5; }
+.brief .model-line, .brief .fallback-note { line-height: 1.5; }
+@media (max-width: 620px) {
+  .welcome-eyebrow { margin-top: 35px; font-size: 10px; }
+  .gate-l h1 { margin-top: 15px !important; font-size: clamp(35px, 9vw, 45px) !important; }
+  .gate-l .promise { font-size: 16px; }
+  .steps { margin-top: 25px; }
+  .step, html[data-theme="dark"] .step { display: grid; grid-template-columns: 32px minmax(85px, .7fr) minmax(0, 1fr); align-items: baseline; gap: 8px; padding: 12px 0; }
+  .step + .step { border-left: 0; border-top: 1px solid var(--line); }
+  .step b { margin: 0; }
+  .step span { font-size: 13px; }
+  .gate-pills { margin-top: 22px; }
+  .brief-h { flex-wrap: wrap; }
+}
