@@ -72,6 +72,16 @@ function BrandMark({ size }) {
   </span>;
 }
 
+function ThinkingStatus({ children }) {
+  return <div className="thinking-status" role="status" aria-live="polite">
+    <svg className="thinking-orb" viewBox="0 0 32 32" aria-hidden="true">
+      <g className="thinking-orb-outer"><circle cx="16" cy="2.5" r="1.5" /><circle cx="25.5" cy="6.5" r="1.5" /><circle cx="29.5" cy="16" r="1.5" /><circle cx="25.5" cy="25.5" r="1.5" /><circle cx="16" cy="29.5" r="1.5" /><circle cx="6.5" cy="25.5" r="1.5" /><circle cx="2.5" cy="16" r="1.5" /><circle cx="6.5" cy="6.5" r="1.5" /></g>
+      <g className="thinking-orb-inner"><circle cx="16" cy="9" r="1.6" /><circle cx="23" cy="16" r="1.6" /><circle cx="16" cy="23" r="1.6" /><circle cx="9" cy="16" r="1.6" /><circle cx="16" cy="16" r="1.8" /></g>
+    </svg>
+    <span>{children}</span>
+  </div>;
+}
+
 function SidebarIcon({ name }) {
   const paths = {
     markets: <><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></>,
@@ -326,6 +336,7 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
             <div className="brief-h"><h2 className="h2">Research brief</h2><span className="tag">AI brief · {ui.selected}</span></div>
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div key={ui.selected} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.22, ease: easeOut }}>
+                {ui.riskLoading && <ThinkingStatus>Preparing research brief…</ThinkingStatus>}
                 <p className="lead">{highlightLead(lead)}</p>
                 <div className="case"><i style={{ background: "var(--up-soft)", color: "var(--up)" }}>↑</i><div>Bull case<div className="b">{asset?.bull || "—"}</div></div></div>
                 <div className="case"><i style={{ background: "var(--down-soft)", color: "var(--down)" }}>↓</i><div>Bear case<div className="b">{asset?.bear || "—"}</div></div></div>
@@ -620,6 +631,7 @@ function AgentScreen({ ui, item, go, Icon }) {
             <p className="lede" style={{ padding: "0 20px" }}>{ui.portfolioPlan?.summary || "The agent proposes weights from the assets that have a usable NAV. It does not place orders."}</p>
             {ui.portfolioPlan?.source && <p className="model-line" style={{ padding: "0 20px" }}>Source {ui.portfolioPlan.source}{ui.portfolioPlan.fallback ? ` · fallback ${ui.portfolioPlan.fallbackReason || "unavailable"}` : ""}</p>}
             <div className="apply-box">
+              {ui.portfolioAgentLoading && <ThinkingStatus>Preparing portfolio plan…</ThinkingStatus>}
               {!ui.portfolioPlan && <button className="btn base lg" type="button" style={{ width: "100%" }} onClick={ui.runPortfolioAgent} disabled={ui.portfolioAgentLoading}>{ui.portfolioAgentLoading ? "Thinking…" : "Run portfolio agent"} <span>→</span></button>}
               {ui.portfolioPlan && !ui.agentApplied && <button className="btn base lg" type="button" style={{ width: "100%" }} onClick={ui.applyPortfolioPlan} disabled={ui.applyingPlan}>{ui.applyingPlan ? "Applying…" : "Apply to paper book"} <span>→</span></button>}
               {ui.agentApplied && (
@@ -758,9 +770,9 @@ function ThesisScreen({ ui, item }) {
                 <p>{row.note}</p>
                 <div className="workspace-outcome"><span>Outcome since entry</span><strong className={outcome.change === null ? "" : outcome.change >= 0 ? "up" : "down"}>{outcome.change === null ? "NAV pending" : `${outcome.change >= 0 ? "+" : ""}${outcome.change.toFixed(2)}%`}</strong><small>{outcome.current === null ? "Awaiting current NAV" : `Entry ${outcome.entry.toFixed(2)} → now ${outcome.current.toFixed(2)}`}</small></div>
                 <div className="workspace-followup">
-                  <div><span>Agent follow-up</span><b>{ui.followUpLoading[row.id] ? "Checking market context…" : ui.followUps[row.id]?.nextAction || "Waiting for market context"}</b></div>
+                  <div><span>Agent follow-up</span>{ui.followUpLoading[row.id] ? <ThinkingStatus>Checking market context…</ThinkingStatus> : <b>{ui.followUps[row.id]?.nextAction || "Waiting for market context"}</b>}</div>
                   {ui.followUps[row.id] && <small>{ui.followUps[row.id].reviewWindow} · confidence {ui.followUps[row.id].confidence}/100</small>}
-                  <button type="button" onClick={() => ui.runFollowUp(row)}>{ui.followUpLoading[row.id] ? "Running…" : "Run follow-up"}</button>
+                  <button type="button" onClick={() => ui.runFollowUp(row)} disabled={!!ui.followUpLoading[row.id]}>{ui.followUpLoading[row.id] ? "Running…" : "Run follow-up"}</button>
                 </div>
                 <div className="workspace-actions">
                   <button type="button" onClick={() => { ui.pick(row.symbol); ui.setScreen("markets"); }}>Open asset</button>
