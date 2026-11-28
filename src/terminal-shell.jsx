@@ -203,6 +203,7 @@ function Gate({ ui, item }) {
         <section className="gate-l">
           <div>
             <motion.div className="sl-brand" initial="hidden" animate="show" variants={item}><BrandMark size={32} /> StockLens <small>/ research terminal</small></motion.div>
+            <motion.div className="welcome-eyebrow" initial="hidden" animate="show" variants={item}><span /> A clearer view of tokenized stocks</motion.div>
             <motion.h1 initial="hidden" animate="show" variants={item} id="welcome-title">From market data<br /><span>to a testable thesis.</span></motion.h1>
             <motion.p className="promise" initial="hidden" animate="show" variants={item}>Explore B20 reference NAVs, challenge an AI research brief, and build a paper portfolio. Record a thesis on Base Sepolia if you choose.</motion.p>
             <motion.div className="steps" initial="hidden" animate="show" variants={item} aria-label="How StockLens works">
@@ -333,11 +334,11 @@ function Dashboard({ ui, item, go, chartIntro, navFlash, Icon }) {
         </div>
         <div className="col a-side">
           <motion.section id="lens" className="card brief" initial="hidden" animate="show" variants={item}>
-            <div className="brief-h"><h2 className="h2">Research brief</h2><span className="tag">AI brief · {ui.selected}</span></div>
+            <div className="brief-h"><div><span className="brief-kicker">RESEARCH / {ui.selected}</span><h2 className="h2">Research brief</h2></div><span className="tag">AI brief · {ui.selected}</span></div>
             <AnimatePresence mode="popLayout" initial={false}>
               <motion.div key={ui.selected} initial={{ opacity: 0, y: 3 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.22, ease: easeOut }}>
                 {ui.riskLoading && <ThinkingStatus>Preparing research brief…</ThinkingStatus>}
-                <p className="lead">{highlightLead(lead)}</p>
+                <div className="brief-summary"><span>THE TAKEAWAY</span><p className="lead">{highlightLead(lead)}</p></div>
                 <div className="case"><i style={{ background: "var(--up-soft)", color: "var(--up)" }}>↑</i><div>Bull case<div className="b">{asset?.bull || "—"}</div></div></div>
                 <div className="case"><i style={{ background: "var(--down-soft)", color: "var(--down)" }}>↓</i><div>Bear case<div className="b">{asset?.bear || "—"}</div></div></div>
                 <div className="case"><i style={{ background: "var(--lav-wash)", color: "var(--lav)" }}>◎</i><div>What to watch<div className="b">{ui.insight?.portfolioRationale || "Watch NAV freshness."}</div></div></div>
