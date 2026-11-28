@@ -1,4 +1,4 @@
-import { useId, useMemo } from "react";
+import { useId } from "react";
 import { motion, useReducedMotion } from "motion/react";
 
 const easeInOut = [0.65, 0, 0.35, 1];
@@ -23,58 +23,11 @@ export function PaperGrain() {
   return <div className="grain" aria-hidden="true" />;
 }
 
-function ridgelinePaths() {
-  const width = 1440;
-  const height = 420;
-  let seed = 11 * 9301 + 49297;
-  const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
-  const paths = [];
-  for (let index = 0; index < 26; index += 1) {
-    const base = 120 + index * 11.5;
-    let d = `M0 ${base}`;
-    const phase = rand() * 6;
-    const amp = 10 + index * 1.6;
-    const freq = 0.004 + rand() * 0.002;
-    for (let x = 0; x <= width; x += 24) {
-      const y = base
-        - amp * Math.sin(x * freq + phase)
-        - Math.max(0, 60 - Math.abs(x - width * 0.66) / 7) * (index / 26) * 1.4
-        - Math.max(0, 40 - Math.abs(x - width * 0.28) / 9) * (index / 30);
-      d += ` L${x} ${y.toFixed(1)}`;
-    }
-    paths.push({
-      d,
-      opacity: (0.07 + index * 0.014).toFixed(3),
-      accent: index % 5 === 0,
-    });
-  }
-  return { width, height, paths };
-}
-
-export function Ridgeline() {
-  const art = useMemo(ridgelinePaths, []);
+export function AmbientBackground() {
   return (
-    <div className="art" aria-hidden="true">
-      <svg viewBox={`0 0 ${art.width} ${art.height}`} preserveAspectRatio="xMidYMid slice">
-        <defs>
-          <linearGradient id="sl-sky" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="#efe9ff" />
-            <stop offset="0.55" stopColor="#f7f3ea" />
-            <stop offset="1" stopColor="#fff6c2" />
-          </linearGradient>
-          <radialGradient id="sl-sun" cx="0.78" cy="0.22" r="0.2">
-            <stop offset="0" stopColor="#ffe500" stopOpacity="0.55" />
-            <stop offset="1" stopColor="#ffe500" stopOpacity="0" />
-          </radialGradient>
-        </defs>
-        <rect width={art.width} height={art.height} fill="url(#sl-sky)" opacity="0.9" />
-        <rect width={art.width} height={art.height} fill="url(#sl-sun)" />
-        <circle cx={art.width * 0.78} cy={art.height * 0.24} r="46" fill="none" stroke="#6652b3" strokeOpacity="0.18" strokeWidth="1.2" />
-        <circle cx={art.width * 0.78} cy={art.height * 0.24} r="30" fill="#fff" fillOpacity="0.35" />
-        {art.paths.map((path) => (
-          <path key={path.d.slice(0, 24)} d={path.d} fill="none" stroke={path.accent ? "#6652b3" : "#5b5340"} strokeOpacity={path.opacity} strokeWidth={path.accent ? 1.2 : 0.8} />
-        ))}
-      </svg>
+    <div className="ambient-background" aria-hidden="true">
+      <div className="ambient-glow" />
+      <div className="ambient-dots" />
     </div>
   );
 }

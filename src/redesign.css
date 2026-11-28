@@ -203,26 +203,44 @@ html[data-theme="dark"] .grain {
   mix-blend-mode: soft-light;
 }
 
-.art {
+/* Decorative atmosphere is limited to the top of the workspace. */
+.ambient-background {
   position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  z-index: 0;
+  inset: 0 0 auto;
   height: 420px;
   overflow: hidden;
   pointer-events: none;
+  z-index: 0;
+  mask-image: linear-gradient(to bottom, #000 0%, #000 38%, transparent 100%);
 }
-
-.art svg { display: block; width: 100%; height: 100%; }
-.art::after {
-  content: "";
+.ambient-glow {
+  position: absolute;
+  inset: -130px -10% 0 28%;
+  background: radial-gradient(ellipse at 65% 35%, rgba(174, 150, 249, .25), rgba(207, 195, 246, .08) 38%, transparent 70%);
+  animation: ambient-drift 18s ease-in-out infinite alternate;
+  will-change: transform;
+}
+.ambient-dots {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(247, 247, 245, 0) 30%, var(--paper) 96%);
+  background-image: radial-gradient(circle, rgba(102, 82, 179, .24) 1px, transparent 1.2px);
+  background-size: 24px 24px;
+  mask-image: radial-gradient(ellipse at 73% 14%, #000 0%, rgba(0, 0, 0, .5) 35%, transparent 78%);
 }
+html[data-theme="dark"] .ambient-glow {
+  background: radial-gradient(ellipse at 65% 35%, rgba(126, 103, 203, .20), rgba(101, 82, 160, .06) 38%, transparent 70%);
+}
+html[data-theme="dark"] .ambient-dots {
+  background-image: radial-gradient(circle, rgba(207, 195, 246, .22) 1px, transparent 1.2px);
+}
+@keyframes ambient-drift { from { transform: translate3d(-2%, 0, 0); } to { transform: translate3d(3%, 2%, 0); } }
+@media (max-width: 620px) {
+  .ambient-background { height: 340px; }
+  .ambient-glow { inset: -100px -35% 0 0; }
+  .ambient-dots { background-size: 22px 22px; }
+}
+@media (prefers-reduced-motion: reduce) { .ambient-glow { animation: none; will-change: auto; } }
 
-html[data-theme="dark"] .art { opacity: 0.45; }
 html[data-theme="dark"] .mark rect { fill: #f3f1ea; }
 html[data-theme="dark"] .mark path { stroke: #171717; }
 

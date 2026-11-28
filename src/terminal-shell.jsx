@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, MotionConfig, motion, useReducedMotion } from "motion/react";
 import NumberFlow from "@number-flow/react";
-import { NavChart, PaperGrain, Ridgeline, Spark } from "./visual.jsx";
+import { AmbientBackground, NavChart, PaperGrain, Spark } from "./visual.jsx";
 
 const easeOut = [0.22, 1, 0.36, 1];
 const list = { hidden: {}, show: { transition: { staggerChildren: 0.06 } } };
@@ -161,7 +161,7 @@ function ShellInner({ ui }) {
 
   return (
     <div className={`terminal-app sl-app${sidebarCollapsed ? " sidebar-collapsed" : ""}`}>
-      <Ridgeline />
+      <AmbientBackground />
       <PaperGrain />
       {!ui.complianceAccepted && <Gate ui={ui} item={item} />}
       {ui.complianceAccepted && <>
