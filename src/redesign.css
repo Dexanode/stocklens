@@ -1370,3 +1370,11 @@ html[data-theme="dark"] .gate-r { background: linear-gradient(180deg, rgba(20, 2
 @media (prefers-reduced-motion: reduce) {
   .sl-app .sl-sidebar, .sl-app .main-column, .sl-app .sl-sidebar-nav, .sl-app .sl-sidebar-toggle svg { transition: none !important; }
 }
+
+/* Compact status indicator appears only while a request is active. */
+.thinking-status { display: inline-flex; align-items: center; gap: 10px; max-width: 100%; margin: 8px 0 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--sunk); color: var(--ink); font: 13px/1.3 var(--f-ui); }
+.thinking-status .thinking-orb { flex: 0 0 24px; width: 24px; height: 24px; fill: var(--lav-ink); }
+.thinking-orb-outer, .thinking-orb-inner { transform-origin: 16px 16px; animation: thinking-breathe 1.8s ease-in-out infinite; }
+.thinking-orb-inner { animation-delay: -.9s; }
+@keyframes thinking-breathe { 0%, 100% { transform: scale(.82); opacity: .55; } 50% { transform: scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .thinking-orb-outer, .thinking-orb-inner { animation: none !important; } }
